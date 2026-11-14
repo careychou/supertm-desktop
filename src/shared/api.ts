@@ -75,7 +75,8 @@ export interface DeskApi {
   getSettings(): Promise<Settings>
   getUsage(days: number): Promise<UsageReport>
   getProjectUsage(days: number): Promise<UsageReport>
-  usageInfo(): Promise<{ project: string | null; pricing: string | null }>
+  getAzureUsage(days: number): Promise<UsageReport>
+  usageInfo(): Promise<{ project: string | null; azure: string | null; pricing: string | null }>
   saveSettings(s: Settings): Promise<void>
   /** Sync sessions: copy the whole session database (plus a manifest) into a folder. */
   syncExport(dir: string): Promise<SyncManifest>

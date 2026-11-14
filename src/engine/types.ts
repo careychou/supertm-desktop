@@ -16,7 +16,8 @@ export type Delta =
   | { type: 'text'; text: string }
   | { type: 'reasoning'; text: string }
   | { type: 'tool_call'; index: number; id?: string; name?: string; args?: string }
-  | { type: 'usage'; prompt: number; completion: number; cached?: number; cacheWrite?: number }
+  /** `model`: the model that actually served the call, when the provider reports it (Azure: deployment → model). */
+  | { type: 'usage'; prompt: number; completion: number; cached?: number; cacheWrite?: number; model?: string }
   | { type: 'finish'; reason: string }
 
 export interface ToolSchema {

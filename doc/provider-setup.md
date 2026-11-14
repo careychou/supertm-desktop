@@ -142,6 +142,57 @@ set and returns your deployment list. The key and deployment names are checked b
 message: send a short prompt to each new deployment. Each deployment appears in the model picker, as
 `<provider-id>::<deployment>` unless Azure is the primary.
 
+### 4. AI usage → Azure resource tab (optional)
+
+The usage panel can show the **whole resource's** token use and cost, for every caller, not just
+this app. It shows two numbers side by side:
+
+- **Est. cost** comes from Azure Monitor token metrics (`InputTokens`, `OutputTokens`,
+  `cacheReadInputTokens`, hourly, split by model), priced with your price table.
+- **Billed** is the actual charge from Azure Cost Management, per day and per model. It lags
+  about a day; treat it as authoritative.
+
+**Sign-in.** By default the app uses the signed-in Azure CLI: run `az login` once (add
+`--tenant <tenant-id>` if you have several). To use a service principal instead, open
+**Usage & billing (optional)** on the Azure provider and fill in **Tenant id**, **Client id** and
+**Client secret**. The secret is stored encrypted, like the API key.
+
+**Resource.** Leave **ARM resource id** blank and the app finds the resource from the host name
+(`<resource>`.openai.azure.com) with Azure Resource Graph. If that fails, paste the id from
+Azure portal → resource → **JSON View**:
+`/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<resource>`.
+
+**Roles** for the identity (your user or the service principal):
+
+| Role | Scope | For |
+|---|---|---|
+| Monitoring Reader (or Reader) | the resource | token metrics; required |
+| Cost Management Reader (or Reader) | the resource group or subscription | billed $; optional, the tab still works without it |
+
+```bash
+# a service principal for the usage tab (prints appId / password / tenant)
+az ad sp create-for-rbac -n supertm-usage --role "Monitoring Reader" \
+  --scopes /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<resource>
+az role assignment create --assignee <appId> --role "Cost Management Reader" \
+  --scope /subscriptions/<sub>/resourceGroups/<rg>
+```
+
+**Prices.** Azure meters are per model and per deployment type; Global is about 10% cheaper than
+Regional or Data Zone. Add GPT models to `pricing.json` in USD per million tokens. You can look up
+list prices with the public Retail Prices API, for example:
+`https://prices.azure.com/api/retail/prices?$filter=armRegionName eq 'eastus' and contains(meterName,'gpt 4o 1120')`.
+Prices there are per 1K tokens, so multiply by 1000.
+
+```json
+"gpt-4o":       { "prices": [{ "from": "2024-11-20", "input": 2.75, "output": 11.00, "cache_read_input": 1.375 }] },
+"gpt-4.1-mini": { "prices": [{ "from": "2025-04-14", "input": 0.44, "output": 1.76,  "cache_read_input": 0.11 }] },
+"o3-mini":      { "prices": [{ "from": "2025-01-31", "input": 1.10, "output": 4.40,  "cache_read_input": 0.55 }] }
+```
+
+Models are keyed by the **model name**, not the deployment name. Azure reports which model served
+each call, so a deployment called `recipe_bot` running `gpt-4.1-mini-2025-04-14` is priced as
+`gpt-4.1-mini`, both in this tab and in **This app**.
+
 ---
 
 ## Custom endpoint

@@ -1,3 +1,4 @@
+import { servedModel } from '../shared/providers'
 import type { Hooks, Message, ModelAdapter } from './types'
 import { buildUserContent, type Attachment } from './content'
 import { loadRegistry, type Registry } from './registry/registry'
@@ -148,7 +149,7 @@ export class Session {
     return {
       async *stream(req, signal) {
         for await (const d of inner.stream(req, signal)) {
-          if (d.type === 'usage') hooks.onEvent({ kind: 'usage', agentId: COMPACT_ID, model, prompt: d.prompt, completion: d.completion, cached: d.cached, cacheWrite: d.cacheWrite })
+          if (d.type === 'usage') hooks.onEvent({ kind: 'usage', agentId: COMPACT_ID, model: servedModel(model, d.model), prompt: d.prompt, completion: d.completion, cached: d.cached, cacheWrite: d.cacheWrite })
           yield d
         }
       }

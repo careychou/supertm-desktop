@@ -5,9 +5,9 @@ export interface PriceEntry { from: string; input?: number; output?: number; cac
 export interface Pricing { as_of?: string; models: Record<string, { label?: string; prices: PriceEntry[] }> }
 
 export interface Tokens { input: number; cached: number; cacheWrite: number; output: number }
-export interface UsageBucket extends Tokens { key: string; label?: string; requests: number; cost: number | null }
+export interface UsageBucket extends Tokens { key: string; label?: string; requests: number; cost: number | null; /** Azure: actual billed USD (Cost Management). */ billed?: number }
 export interface UsageReport {
-  source: 'local' | 'project'
+  source: 'local' | 'project' | 'azure'
   start: string
   end: string
   total: UsageBucket
@@ -17,6 +17,10 @@ export interface UsageReport {
   pricingAsOf?: string
   warnings: string[]
   project?: string
+  /** Azure: ARM resource id the report covers. */
+  resource?: string
+  /** Azure: why billed $ is missing (e.g. no Cost Management Reader role). */
+  billedError?: string
   error?: string
 }
 
@@ -25,7 +29,8 @@ export interface LedgerRow { ts: number; session_id: string; title: string | nul
 
 /** "anthropic/claude-opus-5-5" → the pricing key ("claude-opus-5-5", or "glm-5.2-maas" for "glm-5.2"). */
 export function pricingKey(model: string, pricing: Pricing | null): string {
-  const base = model.replace(/^.*::/, '').split('/').pop()!.toLowerCase().replace(/@.*$/, '')
+  // Azure reports dated model versions (gpt-4.1-mini-2025-04-14): price by the model line
+  const base = model.replace(/^.*::/, '').split('/').pop()!.toLowerCase().replace(/@.*$/, '').replace(/-\d{4}-\d{2}-\d{2}$/, '')
   if (!pricing) return base
   for (const k of [base, `${base}-maas`, base.replace(/-maas$/, '')]) if (pricing.models[k]) return k
   return base
@@ -58,7 +63,7 @@ function add(b: UsageBucket, t: Tokens, cost: number | null, requests: number) {
 /** Group tokens/cost into total, per day, per model and (optionally) per chat. */
 export function buildReport(
   entries: Array<{ day: string; model: string; chat?: string; chatLabel?: string; t: Tokens; requests: number }>,
-  pricing: Pricing | null, meta: { source: 'local' | 'project'; start: string; end: string; project?: string; warnings?: string[] }
+  pricing: Pricing | null, meta: { source: UsageReport['source']; start: string; end: string; project?: string; resource?: string; warnings?: string[] }
 ): UsageReport {
   const total = blank('total')
   const byDay = new Map<string, UsageBucket>(), byModel = new Map<string, UsageBucket>(), byChat = new Map<string, UsageBucket>()
@@ -134,6 +139,95 @@ export function projectReport(j: any, pricing: Pricing | null): UsageReport {
     for (const b of r.byModel) b.cost = sum((x) => x.model === b.key)
     r.warnings = r.warnings.filter((w) => !w.startsWith('No pricing.json'))
     r.pricingAsOf = j.pricing_as_of
+  }
+  return r
+}
+
+/**
+ * Azure Monitor metrics response (hourly `Total`, split by ModelName) → per-(local day, model) token rows.
+ * `InputTokens` includes cached prompt tokens; the input we price is the uncached remainder. When
+ * `cacheReadInputTokens` is not reported for an hour, the cached share is estimated from the hourly
+ * average `AzureOpenAIContextTokensCacheMatchRate` (percent), if present.
+ */
+export function azureMonitorRows(metrics: any): { rows: Array<{ day: string; model: string; input: number; cached: number; output: number }>; warnings: string[] } {
+  type Hour = { day: string; model: string; input: number; cached: number; output: number; rate?: number }
+  const hours = new Map<string, Hour>()
+  for (const m of metrics?.value ?? []) {
+    const name: string = m?.name?.value ?? ''
+    for (const ts of m?.timeseries ?? []) {
+      const model = (ts?.metadatavalues ?? []).find((v: any) => /^modelname$/i.test(v?.name?.value ?? ''))?.value || '?'
+      for (const d of ts?.data ?? []) {
+        const v = name === 'AzureOpenAIContextTokensCacheMatchRate' ? d?.average : d?.total
+        if (v == null) continue
+        const k = `${d.timeStamp}\u0000${model}`
+        const h: Hour = hours.get(k) ?? { day: localDay(Date.parse(d.timeStamp)), model, input: 0, cached: 0, output: 0 }
+        hours.set(k, h)
+        if (name === 'InputTokens') h.input += v
+        else if (name === 'OutputTokens') h.output += v
+        else if (name === 'cacheReadInputTokens') h.cached += v
+        else if (name === 'AzureOpenAIContextTokensCacheMatchRate') h.rate = v
+      }
+    }
+  }
+  const rows = new Map<string, { day: string; model: string; input: number; cached: number; output: number }>()
+  const estimated = new Set<string>()
+  for (const h of hours.values()) {
+    let cached = h.cached
+    if (!cached && h.rate && h.input) { cached = Math.round((h.input * h.rate) / 100); estimated.add(h.model) }
+    cached = Math.min(cached, h.input)
+    const k = `${h.day}\u0000${h.model}`
+    const r = rows.get(k) ?? { day: h.day, model: h.model, input: 0, cached: 0, output: 0 }
+    rows.set(k, r)
+    r.input += h.input - cached; r.cached += cached; r.output += h.output
+  }
+  const out = [...rows.values()].filter((r) => r.input || r.cached || r.output).sort((a, b) => (a.day + a.model).localeCompare(b.day + b.model))
+  return { rows: out, warnings: [...estimated].map((m) => `${m}: Azure Monitor did not report cached tokens; cached share estimated from the cache match rate.`) }
+}
+
+/** Cost Management meter name → model line: "gpt 4o 1120 cached Inp regnl Tokens" → "gpt-4o", "o3 mini 0131 input glbl Tokens" → "o3-mini". */
+export function meterModel(meter: string): string {
+  const out: string[] = []
+  for (const t of meter.toLowerCase().split(/\s+/)) {
+    if (/^(inp|input|inpt|outp|output|opt|out|cached|cchd|batch|tokens?|regnl|regional|glbl|global|dz|data|zone|dzone|datazone)$/.test(t) || /^batch/.test(t)) break
+    if (/^\d{4}$/.test(t)) continue
+    out.push(t)
+  }
+  return out.join('-') || meter
+}
+
+/** Cost Management query rows `[Cost, UsageDate(YYYYMMDD), Meter, Currency]` → billed USD per (day, model). */
+export function azureCostRows(cost: any): Array<{ day: string; model: string; cost: number; currency: string }> {
+  const cols: string[] = (cost?.properties?.columns ?? []).map((c: any) => String(c.name).toLowerCase())
+  const ix = (n: string) => cols.indexOf(n)
+  const [ci, di, mi, cu] = [ix('cost'), ix('usagedate'), ix('meter'), ix('currency')]
+  const out = new Map<string, { day: string; model: string; cost: number; currency: string }>()
+  for (const row of cost?.properties?.rows ?? []) {
+    const d = String(row[di])
+    const day = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`
+    const model = meterModel(String(row[mi] ?? '?'))
+    const k = `${day}\u0000${model}`
+    const r = out.get(k) ?? { day, model, cost: 0, currency: cu >= 0 ? String(row[cu]) : 'USD' }
+    out.set(k, r)
+    r.cost += Number(row[ci]) || 0
+  }
+  return [...out.values()]
+}
+
+/** Azure Monitor token rows (+ optional Cost Management billed rows) → report with an estimate and, when available, the billed amount. */
+export function azureReport(
+  j: { rows: ReturnType<typeof azureMonitorRows>['rows']; billed?: ReturnType<typeof azureCostRows> | null; billedError?: string; start: string; end: string; resource: string; warnings?: string[] },
+  pricing: Pricing | null
+): UsageReport {
+  const r = buildReport(j.rows.map((x) => ({ day: x.day, model: x.model, requests: 0, t: { input: x.input, cached: x.cached, cacheWrite: 0, output: x.output } })),
+    pricing, { source: 'azure', start: j.start, end: j.end, resource: j.resource, warnings: j.warnings })
+  r.billedError = j.billedError
+  if (j.billed) {
+    const key = (m: string) => pricingKey(m, pricing)
+    const put = (list: UsageBucket[], k: string, v: number) => { let b = list.find((x) => x.key === k); if (!b) list.push((b = { ...blank(k), cost: null })); b.billed = (b.billed ?? 0) + v }
+    r.total.billed = 0
+    for (const x of j.billed) { r.total.billed += x.cost; put(r.byDay, x.day, x.cost); put(r.byModel, key(x.model), x.cost) }
+    r.byDay.sort((a, b) => a.key.localeCompare(b.key))
+    if (j.billed.some((x) => x.currency && x.currency !== 'USD')) r.warnings.push(`Billed amounts are in ${j.billed.find((x) => x.currency !== 'USD')!.currency}.`)
   }
   return r
 }

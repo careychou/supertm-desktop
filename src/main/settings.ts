@@ -63,7 +63,13 @@ export function loadSettings(): Settings {
 
 export function saveSettings(s: Settings): void {
   const enc = safeStorage.isEncryptionAvailable()
-  const out: any = { ...s, providers: s.providers.map(({ apiKey, ...p }) => (enc ? { ...p, apiKeyEnc: safeStorage.encryptString(apiKey).toString('base64') } : { ...p, apiKey })) }
+  const seal = (v: string) => safeStorage.encryptString(v).toString('base64')
+  const out: any = {
+    ...s,
+    providers: s.providers.map(({ apiKey, clientSecret, ...p }) => (enc
+      ? { ...p, apiKeyEnc: seal(apiKey), ...(clientSecret ? { clientSecretEnc: seal(clientSecret) } : {}) }
+      : { ...p, apiKey, ...(clientSecret ? { clientSecret } : {}) }))
+  }
   fs.mkdirSync(path.dirname(file()), { recursive: true })
   fs.writeFileSync(file(), JSON.stringify(out, null, 2))
 }

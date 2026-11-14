@@ -1,3 +1,4 @@
+import { servedModel } from '../shared/providers'
 import type { Message, ModelAdapter, Hooks } from './types'
 import type { ToolDef, ToolContext } from './tools/types'
 import { Assembler } from './adapter/assemble'
@@ -35,7 +36,7 @@ async function callModel(o: LoopOptions, messages: Message[]): Promise<Extract<M
           asm.push(d)
           if (d.type === 'text') { streamed = true; o.hooks.onEvent({ kind: 'text', agentId: o.agentId, text: d.text }) }
           else if (d.type === 'reasoning') { streamed = true; if (o.reasoning !== 'off') o.hooks.onEvent({ kind: 'reasoning', agentId: o.agentId, text: d.text }) }
-          else if (d.type === 'usage') o.hooks.onEvent({ kind: 'usage', agentId: o.agentId, model: o.model, prompt: d.prompt, completion: d.completion, cached: d.cached, cacheWrite: d.cacheWrite })
+          else if (d.type === 'usage') o.hooks.onEvent({ kind: 'usage', agentId: o.agentId, model: servedModel(o.model, d.model), prompt: d.prompt, completion: d.completion, cached: d.cached, cacheWrite: d.cacheWrite })
         }
         return asm.message()
       } catch (e: any) {

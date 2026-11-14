@@ -1,7 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { localReport, monitoringRows, projectReport, type Pricing, type UsageReport } from '../shared/usage'
+import { execFile } from 'node:child_process'
+import { azureCostRows, azureMonitorRows, azureReport, localDay, localReport, monitoringRows, projectReport, type Pricing, type UsageReport } from '../shared/usage'
 import type { ProviderEntry } from '../shared/providers'
 import { VertexAuth } from '../engine/adapter/vertex-auth'
 import type { Store } from './store'
@@ -75,6 +76,125 @@ export async function getProjectUsage(providers: ProviderEntry[], days: number, 
     const token = await (auth ?? new VertexAuth(p.credentialsPath ?? '')).token()
     const { rows, warnings: w } = monitoringRows(await fetchTokenSeries(p.project!.trim(), token, start, end, f))
     return projectReport({ rows, start: start.toISOString(), end: end.toISOString(), project: p.project!.trim(), warnings: [...warnings, ...w] }, loadPricing(pricingPath, dataHome).pricing)
+  } catch (e: any) {
+    return empty(String(e?.message ?? e))
+  }
+}
+
+// ── Azure: Azure Monitor token metrics + Cost Management billed $ ───────────────────────────────
+
+const ARM = 'https://management.azure.com'
+/** Azure Monitor keeps platform metrics ~93 days. */
+const AZURE_RETENTION_DAYS = 93
+
+/** The Azure provider the Azure usage tab reads (first enabled one). */
+export function azureUsageProvider(providers: ProviderEntry[]): ProviderEntry | null {
+  return providers.find((p) => p.kind === 'azure' && p.enabled !== false && p.baseUrl?.trim()) ?? null
+}
+
+/** ARM token: the provider's Entra service principal when set, else the signed-in Azure CLI. */
+export async function azureArmToken(p: ProviderEntry, f: typeof fetch = fetch): Promise<string> {
+  if (p.tenantId?.trim() && p.clientId?.trim() && p.clientSecret) {
+    const r = await f(`https://login.microsoftonline.com/${encodeURIComponent(p.tenantId.trim())}/oauth2/v2.0/token`, {
+      method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'client_credentials', client_id: p.clientId.trim(), client_secret: p.clientSecret, scope: `${ARM}/.default` }).toString()
+    })
+    const j: any = await r.json().catch(() => ({}))
+    if (!r.ok || !j.access_token) throw new Error(`Entra sign-in failed (${r.status}): ${j.error_description ?? j.error ?? ''}`.trim())
+    return j.access_token
+  }
+  const args = ['account', 'get-access-token', '--resource', ARM, '--query', 'accessToken', '-o', 'tsv']
+  if (p.tenantId?.trim()) args.push('--tenant', p.tenantId.trim())
+  return new Promise((resolve, reject) => execFile('az', args, { timeout: 30000 }, (err, out, errOut) => {
+    if (err) reject(new Error((err as any).code === 'ENOENT'
+      ? 'Azure CLI (az) not found. Install it and run `az login`, or set a service principal on the Azure provider.'
+      : `az account get-access-token failed — run \`az login\`.\n${String(errOut).split('\n').filter((l) => !/Warning/.test(l)).join('\n').trim().slice(0, 300)}`))
+    else resolve(out.trim())
+  }))
+}
+
+async function arm(f: typeof fetch, token: string, url: string, init?: { method?: string; body?: unknown }): Promise<any> {
+  const r = await f(url.startsWith('http') ? url : ARM + url, {
+    method: init?.method ?? 'GET',
+    headers: { authorization: `Bearer ${token}`, ...(init?.body ? { 'content-type': 'application/json' } : {}) },
+    body: init?.body ? JSON.stringify(init.body) : undefined
+  })
+  if (!r.ok) { const e: any = new Error(`${r.status}: ${(await r.text()).slice(0, 300)}`); e.status = r.status; throw e }
+  return r.json()
+}
+
+/** The provider's ARM resource id: as configured, else looked up by the host's resource name via Resource Graph. */
+export async function azureResourceId(p: ProviderEntry, token: string, f: typeof fetch = fetch): Promise<string> {
+  if (p.armResourceId?.trim()) return p.armResourceId.trim().replace(/\/$/, '')
+  const name = (() => { try { return new URL(p.baseUrl.trim()).hostname.split('.')[0] } catch { return '' } })()
+  if (!name) throw new Error('Set the Azure provider\'s resource host (https://<resource>.openai.azure.com).')
+  const j = await arm(f, token, '/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01', {
+    method: 'POST', body: { query: `resources | where type =~ 'microsoft.cognitiveservices/accounts' and name =~ '${name.replace(/'/g, '')}' | project id` }
+  })
+  const id = j?.data?.[0]?.id
+  if (!id) throw new Error(`No Azure resource named '${name}' is visible to this identity. Paste its ARM resource id on the provider (Azure portal → resource → JSON view).`)
+  return id
+}
+
+/** Hourly token metrics split by model (ModelName). */
+export async function fetchAzureMetrics(resourceId: string, token: string, start: Date, end: Date, f: typeof fetch = fetch): Promise<any> {
+  const q = (names: string, agg: string) => new URLSearchParams({
+    'api-version': '2023-10-01', metricnames: names, timespan: `${start.toISOString()}/${end.toISOString()}`,
+    interval: 'PT1H', aggregation: agg, $filter: "ModelName eq '*'", top: '100'
+  })
+  const base = `${resourceId}/providers/microsoft.insights/metrics?`
+  const tokens = await arm(f, token, base + q('InputTokens,OutputTokens,cacheReadInputTokens', 'Total'))
+  let rate: any = { value: [] }
+  try { rate = await arm(f, token, base + q('AzureOpenAIContextTokensCacheMatchRate', 'Average')) } catch { /* optional */ }
+  return { value: [...(tokens.value ?? []), ...(rate.value ?? [])] }
+}
+
+/** Actual cost per day + meter for the resource (paged). Queried at the resource group scope, filtered to the resource. */
+export async function fetchAzureCost(resourceId: string, token: string, start: Date, end: Date, f: typeof fetch = fetch): Promise<any> {
+  const scope = resourceId.split('/providers/')[0]
+  const body = {
+    type: 'ActualCost', timeframe: 'Custom',
+    timePeriod: { from: `${localDay(start.getTime())}T00:00:00Z`, to: `${localDay(end.getTime())}T23:59:59Z` },
+    dataset: {
+      granularity: 'Daily', aggregation: { c: { name: 'Cost', function: 'Sum' } },
+      filter: { dimensions: { name: 'ResourceId', operator: 'In', values: [resourceId] } },
+      grouping: [{ type: 'Dimension', name: 'Meter' }]
+    }
+  }
+  let j = await arm(f, token, `${scope}/providers/Microsoft.CostManagement/query?api-version=2023-11-01`, { method: 'POST', body })
+  const out = { properties: { columns: j?.properties?.columns ?? [], rows: [...(j?.properties?.rows ?? [])] } }
+  while (j?.properties?.nextLink) {
+    j = await arm(f, token, j.properties.nextLink, { method: 'POST', body })
+    out.properties.rows.push(...(j?.properties?.rows ?? []))
+  }
+  return out
+}
+
+/** Whole-resource Azure OpenAI usage: tokens from Azure Monitor, priced locally, plus billed $ from Cost Management. */
+export async function getAzureUsage(providers: ProviderEntry[], days: number, pricingPath: string, dataHome: string, f: typeof fetch = fetch, tokenFn?: () => Promise<string>): Promise<UsageReport> {
+  const empty = (error: string): UsageReport => ({ source: 'azure', start: '', end: '', total: { key: 'total', input: 0, cached: 0, cacheWrite: 0, output: 0, requests: 0, cost: 0 }, byDay: [], byModel: [], warnings: [], error })
+  const p = azureUsageProvider(providers)
+  if (!p) return empty('Azure usage reads Azure Monitor through an Azure OpenAI provider. Add one in Settings → Model providers.')
+  const end = new Date()
+  const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - (days - 1))
+  const warnings: string[] = []
+  const oldest = new Date(end.getTime() - AZURE_RETENTION_DAYS * 86400_000)
+  if (start < oldest) { start.setTime(oldest.getTime()); warnings.push(`Azure Monitor keeps about ${AZURE_RETENTION_DAYS} days; older usage is not shown.`) }
+  try {
+    const token = await (tokenFn ?? (() => azureArmToken(p, f)))()
+    const resource = await azureResourceId(p, token, f)
+    let metrics: any
+    try { metrics = await fetchAzureMetrics(resource, token, start, end, f) } catch (e: any) {
+      throw new Error(e?.status === 403 ? `Permission denied — the identity needs the Monitoring Reader role on ${resource}.\n${e.message}` : `Azure Monitor ${e?.message ?? e}`)
+    }
+    const { rows, warnings: w } = azureMonitorRows(metrics)
+    let billed: ReturnType<typeof azureCostRows> | null = null, billedError: string | undefined
+    try { billed = azureCostRows(await fetchAzureCost(resource, token, start, end, f)) } catch (e: any) {
+      billedError = e?.status === 403 || e?.status === 401
+        ? 'Billed cost unavailable — the identity needs the Cost Management Reader role on the resource group or subscription.'
+        : `Billed cost unavailable: Cost Management ${e?.message ?? e}`
+    }
+    return azureReport({ rows, billed, billedError, start: start.toISOString(), end: end.toISOString(), resource, warnings: [...warnings, ...w] }, loadPricing(pricingPath, dataHome).pricing)
   } catch (e: any) {
     return empty(String(e?.message ?? e))
   }

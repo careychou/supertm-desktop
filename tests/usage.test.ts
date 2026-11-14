@@ -89,3 +89,76 @@ describe('project usage (Cloud Monitoring)', () => {
     expect(r.error).toMatch(/roles\/monitoring\.viewer/)
   })
 })
+
+describe('azure usage (Azure Monitor + Cost Management)', () => {
+  const az: Pricing = { models: { 'gpt-4o': { prices: [{ from: '2024-01-01', input: 2.75, output: 11, cache_read_input: 1.375 }] }, 'gpt-4.1-mini': { prices: [{ from: '2024-01-01', input: 0.44, output: 1.76 }] } } }
+  const md = (m: string) => [{ name: { value: 'modelname' }, value: m }]
+  const h = (iso: string) => new Date(iso).toISOString()
+  const metrics = { value: [
+    { name: { value: 'InputTokens' }, timeseries: [{ metadatavalues: md('gpt-4o'), data: [{ timeStamp: h('2026-11-10T10:00:00'), total: 1_000_000 }, { timeStamp: h('2026-11-10T11:00:00'), total: 1_000_000 }] }] },
+    { name: { value: 'OutputTokens' }, timeseries: [{ metadatavalues: md('gpt-4o'), data: [{ timeStamp: h('2026-11-10T10:00:00'), total: 100_000 }] }] },
+    // 10:00 reports cached tokens; 11:00 does not, so the 50% match rate estimates them
+    { name: { value: 'cacheReadInputTokens' }, timeseries: [{ metadatavalues: md('gpt-4o'), data: [{ timeStamp: h('2026-11-10T10:00:00'), total: 200_000 }] }] },
+    { name: { value: 'AzureOpenAIContextTokensCacheMatchRate' }, timeseries: [{ metadatavalues: md('gpt-4o'), data: [{ timeStamp: h('2026-11-10T11:00:00'), average: 50 }] }] }
+  ] }
+
+  it('splits cached out of InputTokens, estimating it from the match rate when missing', async () => {
+    const { azureMonitorRows } = await import('../src/shared/usage')
+    const { rows, warnings } = azureMonitorRows(metrics)
+    expect(rows).toEqual([{ day: '2026-11-10', model: 'gpt-4o', input: 800_000 + 500_000, cached: 200_000 + 500_000, output: 100_000 }])
+    expect(warnings[0]).toMatch(/gpt-4o: .*estimated/)
+  })
+
+  it('maps Cost Management meters to model lines', async () => {
+    const { meterModel } = await import('../src/shared/usage')
+    expect(meterModel('gpt 4o 1120 cached Inp regnl Tokens')).toBe('gpt-4o')
+    expect(meterModel('gpt 4o 1120 Outp regnl Tokens')).toBe('gpt-4o')
+    expect(meterModel('o3 mini 0131 input glbl Tokens')).toBe('o3-mini')
+    expect(meterModel('gpt 4.1 mini Inp Data Zone Tokens')).toBe('gpt-4.1-mini')
+    expect(meterModel('gpt 4o mini0718 BatchOutp DataZone Tokens')).toBe('gpt-4o-mini0718')
+  })
+
+  it('prices Azure usage locally and adds billed $ per day and model', async () => {
+    const { getAzureUsage } = await import('../src/main/usage')
+    const calls: string[] = []
+    const f = (async (url: string, init?: any) => {
+      calls.push(`${init?.method ?? 'GET'} ${url.split('?')[0]}`)
+      const json = (j: any) => ({ ok: true, status: 200, json: async () => j, text: async () => '' })
+      if (url.includes('ResourceGraph')) return json({ data: [{ id: '/subscriptions/s/resourceGroups/rg/providers/Microsoft.CognitiveServices/accounts/res' }] })
+      if (url.includes('metricnames=AzureOpenAI')) return json({ value: [] })
+      if (url.includes('/metrics')) return json(metrics)
+      if (url.includes('CostManagement')) return json({ properties: { columns: [{ name: 'Cost' }, { name: 'UsageDate' }, { name: 'Meter' }, { name: 'Currency' }], rows: [
+        [3, 20261110, 'gpt 4o 1120 Inp regnl Tokens', 'USD'], [1.1, 20261110, 'gpt 4o 1120 Outp regnl Tokens', 'USD'], [0.5, 20261111, 'gpt 4o 1120 cached Inp regnl Tokens', 'USD']
+      ] } })
+      throw new Error('unexpected ' + url)
+    }) as any
+    const pricingFile = require('node:path').join(require('node:os').tmpdir(), `az-pricing-${process.pid}.json`)
+    require('node:fs').writeFileSync(pricingFile, JSON.stringify(az))
+    const r = await getAzureUsage([{ id: 'az', name: 'Azure', kind: 'azure', baseUrl: 'https://res.openai.azure.com', apiKey: 'k' }], 3650, pricingFile, '/nonexistent', f, async () => 'tok')
+    expect(r.error).toBeUndefined()
+    expect(calls[0]).toBe('POST https://management.azure.com/providers/Microsoft.ResourceGraph/resources')
+    expect(calls).toContain('POST https://management.azure.com/subscriptions/s/resourceGroups/rg/providers/Microsoft.CostManagement/query')
+    expect(r.resource).toMatch(/accounts\/res$/)
+    // 1.3M uncached + 0.7M cached (see above) + 0.1M output
+    expect(+r.total.cost!.toFixed(4)).toBe(+(1.3 * 2.75 + 0.7 * 1.375 + 0.1 * 11).toFixed(4))
+    expect(+r.total.billed!.toFixed(2)).toBe(4.6)
+    expect(r.byModel.find((m) => m.key === 'gpt-4o')!.billed).toBeCloseTo(4.6)
+    expect(r.byDay.map((d) => [d.key, +(d.billed ?? 0).toFixed(2)])).toEqual([['2026-11-10', 4.1], ['2026-11-11', 0.5]])
+    expect(r.warnings.some((w) => /93 days/.test(w))).toBe(true)
+  })
+
+  it('keeps the token report when Cost Management is forbidden', async () => {
+    const { getAzureUsage } = await import('../src/main/usage')
+    const f = (async (url: string) => url.includes('CostManagement')
+      ? { ok: false, status: 403, json: async () => ({}), text: async () => 'AuthorizationFailed' }
+      : { ok: true, status: 200, json: async () => (url.includes('metricnames=Input') ? metrics : { value: [] }), text: async () => '' }) as any
+    const r = await getAzureUsage([{ id: 'az', name: 'Azure', kind: 'azure', baseUrl: 'https://res.openai.azure.com', apiKey: 'k', armResourceId: '/subscriptions/s/resourceGroups/rg/providers/Microsoft.CognitiveServices/accounts/res' }], 7, '', '/nonexistent', f, async () => 'tok')
+    expect(r.error).toBeUndefined()
+    expect(r.total.billed).toBeUndefined()
+    expect(r.billedError).toMatch(/Cost Management Reader/)
+  })
+
+  it('prices dated Azure model versions by their model line', () => {
+    expect(pricingKey('azure::gpt-4.1-mini-2025-04-14', az)).toBe('gpt-4.1-mini')
+  })
+})

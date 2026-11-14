@@ -117,6 +117,16 @@ export function ProvidersTab({ s, setS }: { s: Settings; setS(s: Settings): void
                   <label>Deployment names (one per line; each becomes a model)
                     <textarea rows={3} value={(p.deployments ?? []).join('\n')} placeholder={'gpt-5\ngpt-4.1-mini'} onChange={(e) => upd(p.id, { deployments: e.target.value.split('\n') })} />
                   </label>
+                  <details className="prov-extra">
+                    <summary>Usage &amp; billing (optional)</summary>
+                    <p className="muted small">The AI usage panel reads this resource's token metrics (Azure Monitor) and billed cost (Cost Management). Leave blank to use the signed-in Azure CLI (<code>az login</code>) and find the resource by its host name. Needs Monitoring Reader, plus Cost Management Reader for billed $.</p>
+                    <label>ARM resource id<input value={p.armResourceId ?? ''} placeholder="/subscriptions/…/resourceGroups/…/providers/Microsoft.CognitiveServices/accounts/<resource>" onChange={(e) => upd(p.id, { armResourceId: e.target.value })} /></label>
+                    <div className="row2">
+                      <label>Tenant id<input value={p.tenantId ?? ''} placeholder="Entra tenant (directory) id" onChange={(e) => upd(p.id, { tenantId: e.target.value })} /></label>
+                      <label>Client id<input value={p.clientId ?? ''} placeholder="Service principal app id" onChange={(e) => upd(p.id, { clientId: e.target.value })} /></label>
+                    </div>
+                    <label>Client secret<input type="password" value={p.clientSecret ?? ''} placeholder="Stored encrypted in the macOS keychain" onChange={(e) => upd(p.id, { clientSecret: e.target.value })} /></label>
+                  </details>
                 </>
               ) : (
                 <>

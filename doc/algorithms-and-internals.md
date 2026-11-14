@@ -214,6 +214,15 @@ cost = ( uncached × input
 - `pricingKey("anthropic/claude-opus-5-5")` → `claude-opus-5-5`; it also tries `<name>-maas` and the name without `-maas`.
 - A model without a price still counts tokens and produces a warning; with no pricing file at all the panel shows tokens only.
 - **Local tab:** aggregates the ledger (by day, model and chat). **Project tab:** `getProjectUsage` (`src/main/usage.ts`) takes the first enabled Vertex provider, mints a token with its `VertexAuth`, and pages `GET monitoring.googleapis.com/v3/projects/{p}/timeSeries` for `aiplatform.googleapis.com/publisher/online_serving/token_count` (hourly `ALIGN_SUM`, `REDUCE_SUM` grouped by `model_user_id`, `publisher`, token `type`, `request_type`). `monitoringRows` (pure, tested) attributes each hourly point to the local day of its start and sums `input`, `output`, `cache_read_input`, `cache_write_input`, `cache_write_1h_input` per (day, model); `projectReport` prices them with the same `pricing.json`. The window is clipped to ~42 days (metric retention); a 403 means the credential lacks `roles/monitoring.viewer`.
+- **Azure tab:** `getAzureUsage` (`src/main/usage.ts`) takes the first enabled Azure provider.
+  - **Token.** It gets an ARM token (`https://management.azure.com/.default`). With a service principal it uses the client-credentials grant against `login.microsoftonline.com/<tenant>`; otherwise it runs `az account get-access-token`.
+  - **Resource.** It resolves the ARM resource id: the configured value, else a Resource Graph query on the host's resource name.
+  - **Metrics.** It reads Azure Monitor `microsoft.insights/metrics` for `InputTokens`, `OutputTokens` and `cacheReadInputTokens` (`PT1H`, `Total`, split `ModelName eq '*'`), plus `AzureOpenAIContextTokensCacheMatchRate` (`Average`).
+  - **Rows.** `azureMonitorRows` (pure, tested) treats `InputTokens` as including cached tokens: uncached input = input − cached. When an hour has no `cacheReadInputTokens`, cached is estimated as input × match-rate% and a warning names the model. Rows are summed per local day and model; window ≈ 93 days.
+  - **Billed.** It POSTs a Cost Management `query` (ActualCost, Daily, grouped by `Meter`) at the **resource-group** scope with a `ResourceId` filter, because resource scope returns 404. It follows `nextLink`.
+  - **Meters.** `meterModel` maps meter names to model lines: `gpt 4o 1120 cached Inp regnl Tokens` → `gpt-4o`. It joins the model tokens before the first version, token-type or region word and drops 4-digit versions.
+  - **Report.** `azureReport` adds `billed` to the total, day and model buckets. A 401/403 from Cost Management becomes `billedError` while the token report stays.
+- **Served model.** Azure deployments have arbitrary names. The OpenAI adapter takes `model` from Azure stream chunks (Responses: `response.model`) and puts it on the `usage` delta. The loop records `servedModel(requested, served)`, e.g. `azure::gpt-4.1-mini-2025-04-14`. `pricingKey` strips a trailing `-YYYY-MM-DD`, so the price key is `gpt-4.1-mini`.
 - **Budget ring:** today's local spend ÷ `dailyBudget`.
 
 

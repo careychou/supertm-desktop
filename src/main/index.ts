@@ -17,7 +17,7 @@ import { insertBeforeTurn, liveTurnMap, orderRows, reorderIds, sliceItemsAtTurn,
 import { prepareAttachment, type AttachInput } from './attachments'
 import type { Attachment } from '../engine/content'
 import { exportSessions, importSessions, resolveSyncFile, scanSessions } from './sync'
-import { getLocalUsage, getProjectUsage, loadPricing, usageProvider } from './usage'
+import { azureUsageProvider, getAzureUsage, getLocalUsage, getProjectUsage, loadPricing, usageProvider } from './usage'
 import { autoCompactDecision, estimateTokens, keepLastPlan, splitHistoryTurns, type CompactPlan } from '../engine/compact'
 
 // GUI apps launched from Finder get a minimal PATH; give shell tools a usable one.
@@ -276,7 +276,8 @@ function registerIpc() {
   ipcMain.handle('getSettings', () => settings)
   ipcMain.handle('getUsage', (_e, days: number) => getLocalUsage(store, days, settings.pricingPath, dataHome))
   ipcMain.handle('getProjectUsage', (_e, days: number) => getProjectUsage(settings.providers, days, settings.pricingPath, dataHome))
-  ipcMain.handle('usageInfo', () => ({ project: usageProvider(settings.providers)?.project ?? null, pricing: loadPricing(settings.pricingPath, dataHome).path }))
+  ipcMain.handle('getAzureUsage', (_e, days: number) => getAzureUsage(settings.providers, days, settings.pricingPath, dataHome))
+  ipcMain.handle('usageInfo', () => ({ project: usageProvider(settings.providers)?.project ?? null, azure: azureUsageProvider(settings.providers)?.baseUrl ?? null, pricing: loadPricing(settings.pricingPath, dataHome).path }))
   ipcMain.handle('saveSettings', (_e, s: Settings) => {
     const oldHome = settings.providers[0]?.id, newHome = s.providers[0]?.id
     const ids = s.providers.map((p) => p.id)

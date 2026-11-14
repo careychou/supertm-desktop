@@ -195,3 +195,11 @@ describe('orphanToPrimary', () => {
     expect(orphanToPrimary('google/gemini-2.5-pro', ['gcp'])).toBe('google/gemini-2.5-pro')
   })
 })
+
+describe('served model', () => {
+  it('keeps the provider prefix but names the serving model', async () => {
+    const { servedModel } = await import('../src/shared/providers')
+    expect(servedModel('azure::recipe_bot', 'gpt-4.1-mini-2025-04-14')).toBe('azure::gpt-4.1-mini-2025-04-14')
+    expect(servedModel('gpt-4o', undefined)).toBe('gpt-4o')
+  })
+})

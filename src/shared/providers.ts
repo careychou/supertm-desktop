@@ -14,6 +14,13 @@ export interface ProviderEntry {
   apiVersion?: string
   /** Azure only: deployment names (each is a model in the picker). */
   deployments?: string[]
+  /** Azure only (usage tab): full ARM resource id; blank = found by the host's resource name via Resource Graph. */
+  armResourceId?: string
+  /** Azure only (usage tab): Entra service principal. Blank = the signed-in Azure CLI (`az login`). */
+  tenantId?: string
+  clientId?: string
+  /** Stored encrypted, like apiKey. */
+  clientSecret?: string
   /** Vertex only: GCP project id. */
   project?: string
   /** Vertex only: default region (`global` for Model Bank MaaS models). */
@@ -73,6 +80,12 @@ export function orphanToPrimary(model: string, ids: string[]): string {
   const { provider, model: bare } = splitModel(model)
   return provider && !ids.includes(provider) ? bare : model
 }
+/** Keeps the provider prefix of the requested id but names the model that actually served it (`azure::recipe_bot` + `gpt-4.1-mini` → `azure::gpt-4.1-mini`). */
+export function servedModel(requested: string, served?: string): string {
+  if (!served) return requested
+  const { provider } = splitModel(requested)
+  return provider ? qualify(provider, served) : served
+}
 /** The model name without any provider prefix (for display and pricing). */
 export const bareModel = (model: string) => splitModel(model).model
 
@@ -91,7 +104,12 @@ export function providerId(name: string, taken: string[]): string {
 export function migrateProviders(raw: Record<string, any>, fallback: ProviderEntry, dec: (enc?: string) => string | undefined): Record<string, any> & { providers?: ProviderEntry[] } {
   const { baseUrl, apiKey, apiKeyEnc, ...rest } = raw
   if (Array.isArray(rest.providers)) {
-    rest.providers = rest.providers.map(({ apiKeyEnc: e, ...p }: any) => ({ ...p, apiKey: dec(e) ?? p.apiKey ?? '' }))
+    rest.providers = rest.providers.map(({ apiKeyEnc: e, clientSecretEnc: ce, ...p }: any) => {
+      const out = { ...p, apiKey: dec(e) ?? p.apiKey ?? '' }
+      const cs = dec(ce) ?? p.clientSecret
+      if (cs) out.clientSecret = cs
+      return out
+    })
   } else if (baseUrl || apiKeyEnc || apiKey) {
     const base: ProviderEntry = fallback.kind === 'openai' ? fallback : { id: fallback.id, name: 'Custom endpoint', kind: 'openai', baseUrl: '', apiKey: '' }
     rest.providers = [{ ...base, baseUrl: baseUrl ?? base.baseUrl, apiKey: dec(apiKeyEnc) ?? apiKey ?? base.apiKey }]

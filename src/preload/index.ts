@@ -45,6 +45,7 @@ const api: DeskApi = {
   getSettings: inv('getSettings') as any,
   getUsage: inv('getUsage') as any,
   getProjectUsage: inv('getProjectUsage') as any,
+  getAzureUsage: inv('getAzureUsage') as any,
   usageInfo: inv('usageInfo') as any,
   saveSettings: inv('saveSettings') as any,
   registryInfo: inv('registryInfo') as any,

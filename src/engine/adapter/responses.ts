@@ -51,7 +51,7 @@ export async function* responsesDeltas(stream: AsyncIterable<Uint8Array>): Async
       case 'response.completed':
       case 'response.incomplete': {
         const u = e.response?.usage
-        if (u) yield { type: 'usage', prompt: u.input_tokens ?? 0, completion: u.output_tokens ?? 0, cached: u.input_tokens_details?.cached_tokens ?? 0, cacheWrite: u.input_tokens_details?.cache_write_tokens ?? 0 }
+        if (u) yield { type: 'usage', prompt: u.input_tokens ?? 0, completion: u.output_tokens ?? 0, cached: u.input_tokens_details?.cached_tokens ?? 0, cacheWrite: u.input_tokens_details?.cache_write_tokens ?? 0, ...(e.response?.model ? { model: e.response.model } : {}) }
         yield { type: 'finish', reason: e.type === 'response.incomplete' ? 'length' : toolIndex.size ? 'tool_calls' : 'stop' }
         return
       }

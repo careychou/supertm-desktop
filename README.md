@@ -67,6 +67,7 @@ On first launch open **⚙ Settings → Model providers**, add a provider (Googl
 - **This app**: every model call this app makes, from the main agent and sub-agents, is recorded locally in `supertm.db` as it happens. Each record holds input, cached, cache-write and output tokens. The panel shows totals, cache-hit rate, a per-day chart, and breakdowns **by model** and **by chat** (click a chat to open it). Ranges: today, 7 days or 30 days.
 - **Cost estimate**: list prices come from a `pricing.json` (USD per 1M tokens, per model, with dated price changes). It is looked up in Settings, then `~/.supertm/pricing.json`. Without one, the panel shows tokens only.
 - **Project tab (optional)**: shows token usage for the whole GCP project, covering every caller and not just this app. It reads Cloud Monitoring directly, signed in with your first Google Vertex AI provider (its service account needs `roles/monitoring.viewer`). About 6 weeks of history.
+- **Azure resource tab (optional)**: covers the whole Azure OpenAI resource. It shows token use from Azure Monitor, priced by model, next to the actual **billed** cost from Azure Cost Management. It signs in with `az login` or a service principal set on the Azure provider. See [doc/provider-setup.md](doc/provider-setup.md#4-ai-usage--azure-resource-tab-optional).
 
 ### Under the hood
 - Electron + React UI over a **headless TypeScript engine** (also usable from a CLI).
