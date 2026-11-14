@@ -1,0 +1,262 @@
+# Algorithms and internals
+
+Reference for the smaller algorithms and subsystems that the agent framework and compaction docs build on.
+
+Contents: [1 Model adapter](#1-model-adapter-and-streaming) · [2 Attachments](#2-attachment-pipeline) · [3 Request budget](#3-request-budget-fitrequest) · [4 Persistence](#4-persistence-schema) · [5 Forks and the tree](#5-forks-ordering-and-the-tree) · [6 Memory export](#6-memory-export-and-import) · [7 Usage and cost](#7-usage-and-cost) · [8 Tool internals](#8-tool-internals) · [9 Settings](#9-settings-reference) · [10 Security notes](#10-security-notes)
+
+## 1. Model adapter and streaming
+
+`src/engine/adapter/openai.ts` talks to any OpenAI-compatible server (`POST {baseUrl}/chat/completions`, `GET {baseUrl}/models`) and to Azure OpenAI deployments; `router.ts` routes between several configured providers (below).
+
+**Request body**
+
+| Field | Value |
+|---|---|
+| `stream` / `stream_options` | `true` / `{include_usage: true}` so the last chunk carries token counts |
+| `max_tokens` | 16,000 unless overridden |
+| `tools` | JSON schemas of the agent's tools (omitted if none) |
+| `include_reasoning`, `reasoning_effort` | Sent only when the chat's effort is not `off` (`low`/`medium`/`high`) |
+| `messages` | The history after `wireMessages` (engine-only fields removed) and `fitRequest` (§3) |
+
+**Stream parsing** (`sse.ts`): bytes are decoded incrementally, split on newlines, and each `data:` line is yielded until `[DONE]`. Malformed JSON chunks are skipped; a chunk with an `error` object throws `upstream: …`.
+
+**Deltas** the adapter yields: `text`, `reasoning`, `tool_call` fragments (index, id, name, arguments piece), `usage`.
+
+**Reasoning extraction.** Providers disagree on where thoughts go, so all of these are accepted:
+
+- `delta.reasoning_content` (DeepSeek/Claude-style proxies)
+- `delta.reasoning`
+- Gemini's `extra_content.google.thought` marker
+- `<think>…</think>` inline in content. `ThinkSplitter` handles tags split across chunks by holding back any trailing text that could be the start of a tag until the next chunk resolves it.
+
+**Usage** is read from `usage.prompt_tokens`, `completion_tokens`, `prompt_tokens_details.cached_tokens` (or `cache_read_input_tokens`) and cache-write tokens (`cache_write_tokens` / `cache_creation_input_tokens`).
+
+**Assembly** (`assemble.ts`): tool-call fragments arrive split across chunks; the `Assembler` concatenates `arguments` by tool-call `index`, fills missing ids, and produces one assistant `Message` with `content`, `tool_calls` and (engine-only) `reasoning`.
+
+**Errors** carry the HTTP status so the loop can decide to retry (once, 1.5 s later, only if nothing was streamed; 5xx, 429, network).
+
+### Model providers (`router.ts`, `shared/providers.ts`)
+
+Settings → **Model providers** holds a list of providers, like Copilot's "Configured providers". Three kinds exist today:
+
+| Kind | Request | Auth | Models |
+|---|---|---|---|
+| `openai` (Custom endpoint) | `POST {baseUrl}/chat/completions` | `Authorization: Bearer <key>` | `GET {baseUrl}/models` |
+| `azure` (Azure OpenAI) | `POST {host}/openai/deployments/{deployment}/chat/completions?api-version={v}` (default `2025-04-01-preview`; a trailing `/openai` or `/openai/v1` on the host is stripped) | `api-key: <key>` | the configured deployment names (no network call) |
+| `vertex` (Google Vertex AI) | Claude: `POST {host}/v1/projects/{p}/locations/{loc}/publishers/anthropic/models/{slug}:streamRawPredict`; others: `POST {host}/v1/projects/{p}/locations/{loc}/endpoints/openapi/chat/completions` (`host` = `aiplatform.googleapis.com` for `global`, else `{loc}-aiplatform.googleapis.com`) | `Authorization: Bearer <OAuth token>` minted from a service-account key | the configured model lines (Vertex has no MaaS listing call) |
+
+Azure differences handled by the adapter: `max_completion_tokens` instead of `max_tokens`, `reasoning_effort` without `include_reasoning`, and a single retry without `reasoning_effort` when a non-reasoning deployment (e.g. gpt-4o) answers 400 `unsupported_parameter`. Streaming, tool calls and usage are the same OpenAI wire format, so everything downstream (assembler, loop, usage ledger) is unchanged.
+
+`ProviderRouter` implements the same `ModelAdapter` interface. Model ids from the **first (primary) provider stay bare**, so chats created before providers existed keep working. Bare ids are pinned to that provider: if it is disabled they fail with a clear error instead of silently going to another provider, and there is no reordering (which would re-point existing chats); models of other providers are qualified as `<providerId>::<model>` (e.g. `azure::gpt-5`). `stream()` splits the prefix, picks the provider's adapter and sends the bare model. `listGroups()` asks every provider in parallel and returns per-provider errors, so one broken provider does not hide the others; the Composer shows the groups as `<optgroup>`s and displays the bare short name. Disabled providers are skipped and their qualified ids fail with a clear "not configured or is disabled" error.
+
+The main process holds one router and an adapter **proxy** (`{ stream: (r, s) => currentRouter.stream(r, s) }`) that every Session gets; saving settings drops the router, so open chats use the new providers on their next model call without being recreated.
+
+#### Google Vertex AI — `adapter/vertex.ts`, `adapter/vertex-auth.ts`
+
+The `vertex` kind talks to Vertex AI directly from the main process; no extra service runs on the Mac. Setup steps: [provider-setup.md](provider-setup.md#google-vertex-ai).
+
+```mermaid
+flowchart LR
+  R[ProviderRouter] --> V[VertexAdapter]
+  V --> A[VertexAuth<br/>JWT RS256 → oauth2 token<br/>cached 40 min]
+  V -->|anthropic/*| C[toAnthropic + cache breakpoints<br/>:streamRawPredict<br/>Anthropic SSE → Delta]
+  V -->|everything else| O[OpenAIAdapter<br/>endpoints/openapi<br/>shape: reasoning rules]
+  V -->|model marked describe| D[vision model transcribes images<br/>cached per image hash]
+```
+
+**Configuration** (Settings → Model providers → Google Vertex AI): GCP **project**, default **location** (`global` for Model Bank MaaS), **service-account key path**, **model lines**, **vision model** for text-only models, and the **Claude prompt-cache TTL** (5 min / 1 h / off). "Add" prefills project, location, models and vision model from `BRAND.vertexDefaults` (empty in the public build). Model line syntax: `publisher/model [@location] [describe]`, e.g. `anthropic/claude-sonnet-5 @us-east5`, `zai-org/glm-5.2-maas describe`; `#` starts a comment.
+
+**Auth.** Only the key *path* is stored in settings. On demand `VertexAuth` reads the JSON and:
+- `service_account` → signs an RS256 JWT (`iss`=client_email, `scope`=cloud-platform, `aud`=token_uri, 1 h) with `node:crypto` and exchanges it with the JWT-bearer grant (no `google-auth-library` dependency);
+- `authorized_user` (gcloud ADC file) → refresh-token grant;
+- no path → `$GOOGLE_APPLICATION_CREDENTIALS` → `~/.config/gcloud/application_default_credentials.json` → `gcloud auth print-access-token`.
+Tokens are cached for 40 minutes, concurrent requests share one in-flight mint, a 401 forces one refresh, and 429/503 back off (0.6 s × attempt, up to 4 tries). A service account is exempt from the org's interactive re-auth policy, so it never asks the user to `gcloud auth login`.
+
+**Claude path.** `toAnthropic` translates the OpenAI-shaped history: system messages → `system`; assistant `tool_calls` → `tool_use` blocks; `role:tool` → user `tool_result` blocks; adjacent same-role turns merged (Anthropic needs alternation and grouped tool results); `data:` image URLs → base64 image blocks. Reasoning on → `thinking: {type:'adaptive', display:'summarized'}` + `output_config.effort`; `temperature`/`top_p` are never sent (Claude 5 rejects them). `applyPromptCache` places up to 4 `cache_control` breakpoints: last tool, system prompt, last block of the final message, last block of the previous user turn — the same rolling-prefix strategy described in [memory-compaction.md §9](memory-compaction.md). The request uses `:streamRawPredict`, so text, thinking and tool-argument JSON stream live; `anthropicDeltas` maps `content_block_*` / `message_delta` events to engine deltas and reports `prompt = input + cache_read + cache_write`, `cached = cache_read`, `cacheWrite = cache_creation` so the usage panel and cache-aware compaction see real cache hits.
+
+**OpenAI-compatible path** (Gemini, GLM, gpt-oss, DeepSeek, Gemma) reuses `OpenAIAdapter` with two hooks: `fetch` (Bearer token + retry) and `shape` (drop `include_reasoning`; for Gemini replace `reasoning_effort` with `extra_body.google.thinking_config.include_thoughts`, which Vertex rejects in combination).
+
+**Vision fallback.** Models marked `describe` cannot read images: each image is first transcribed by the vision model (default `google/gemini-3.8-flash`) with an exhaustive "be the eyes" prompt, and the text replaces the image part. Results are cached by SHA-256 of the data URL so later turns don't re-pay.
+
+**Test** mints a fresh token and sends a 1-token request to the first non-Claude model, proving key, project and IAM (`roles/aiplatform.user`) in one click.
+
+Keys are stored per provider, encrypted with Electron `safeStorage` (`providers[].apiKeyEnc` in `settings.json`). `migrateProviders` (pure, tested) converts pre-0.8 settings (`baseUrl` + `apiKeyEnc`) into the primary provider. The headless CLI still uses one endpoint from `SUPERTM_BASE_URL` / `SUPERTM_API_KEY` (default `http://127.0.0.1:4141/v1`). Fresh installs start with a Vertex provider when the brand ships `vertexDefaults`, otherwise with that custom endpoint.
+
+## 2. Attachment pipeline
+
+`src/main/attachments.ts` (Electron-bound: `nativeImage`, macOS tools) and `src/shared/attach.ts` (pure, tested). Goal: keep what the model needs, spend fewer tokens, stay under the provider's request-size limit.
+
+Inputs arrive as a file path (drop, picker, Finder paste) or raw bytes (pasted screenshot, written to a temp file and deleted afterwards). Folders and files over 200 MB are refused with an explanatory message.
+
+### Images
+
+```mermaid
+flowchart TD
+  A[image file] --> B{png/jpg/gif/webp,<br/>long edge <= 1568,<br/>size <= 400 KB?}
+  B -- yes --> P[pass through untouched]
+  B -- no --> C[downscale: long edge <= imageMaxEdge<br/>never upscale]
+  C --> D[encode JPEG q=82]
+  D --> E{<= imageMaxKB?}
+  E -- yes --> F[done]
+  E -- no --> G[q=70, then q=55]
+  G --> H{fits?}
+  H -- yes --> F
+  H -- no --> I[edge x 0.75, retry<br/>up to 6 rounds, min 256 px]
+  I --> D
+  F --> J{source PNG and PNG no bigger<br/>than 1.25 x JPEG?}
+  J -- yes --> K[keep as PNG: crisper for screenshots]
+  J -- no --> L[keep JPEG]
+```
+
+- Default limits: `imageMaxEdge` 1568 px, `imageQuality` 82, `imageMaxKB` 1500.
+- **Why 1568 px:** vision models resample images to roughly this size anyway, so larger images cost bytes and upload time without adding visible fidelity.
+- HEIC/TIFF or images `nativeImage` cannot open are first converted with macOS `sips`.
+- A 96 px-high JPEG thumbnail is stored in UI metadata only (never sent to the model).
+- Each image is budgeted as a flat 1,600 tokens (`IMAGE_TOKENS`).
+- The info line shows the saving, e.g. `4.2 MB → 310 KB · 1568×980 · ~1.6k tokens`.
+
+### Documents → text
+
+| Type | Method |
+|---|---|
+| PDF | `unpdf` text per page, labelled `--- page n ---`. If the text layer is nearly empty (< 20 chars/page), the file is treated as scanned: page 1 is rasterized with `sips` and attached as an image |
+| doc, docx, rtf, rtfd, odt, html, htm, webarchive | macOS `textutil -convert txt` |
+| pptx | unzip slide XML, extract `<a:t>` runs, `--- slide n ---` |
+| xlsx | shared strings table + sheet XML → TSV per sheet |
+| text, code, csv, md, json… | read as UTF-8; a NUL byte in the first 8 KB means binary and is rejected |
+
+**`compressText(s, maxChars)`** (default `docMaxChars` = 80,000): normalizes CRLF, trailing spaces and runs of blank lines. If still over the cap it keeps the first **70 %** and last **30 %** with a middle marker `… [N characters omitted to save context] …`. Head and tail are kept because documents tend to put the framing at the start and conclusions or the latest rows at the end.
+
+### Sending
+
+`buildUserContent(prompt, attachments)` (`engine/content.ts`): documents become `<attachment name="…" note="…">text</attachment>` blocks inside the user text; images become `image_url` content parts with a caption naming the file. Attachments are stored in the message history, so follow-up turns still see them (subject to §3).
+
+## 3. Request budget (`fitRequest`)
+
+Some providers reject large bodies (Vertex AI Model Garden: 30 MB). History re-sends every image on every request, so the adapter applies a budget **at send time**, never mutating the stored history:
+
+1. **Image age:** images in user messages other than the last `imageTurns` (default 4; 0 = no limit) are replaced with a text note: `[An earlier image was omitted…]`.
+2. **Size:** if the JSON body is still larger than `requestMaxMB` (default 20 MB, leaving headroom under 30), the *oldest* remaining images are replaced one at a time until it fits.
+3. If it fits already, nothing changes.
+
+Because only the wire copy is trimmed, the chat still shows every image and a later setting change (or a larger `imageTurns`) restores them to the model.
+
+## 4. Persistence schema
+
+SQLite via `node:sqlite` (`~/.supertm/supertm.db`). Migrations are additive `ALTER TABLE` guards run at startup.
+
+| Table | Purpose / notable columns |
+|---|---|
+| `sessions` | `id` (a random UUID, the internal key; users see `title`), `title, cwd, model, created_at, updated_at` (when the last turn finished; renames and model or mode changes do not move it), `parent_id, fork_turn, reasoning, mode, memories (JSON), turn_map (JSON), compact_offset (legacy), sort_order` |
+| `messages` | Main-agent model history: `session_id, seq, content_json` (one OpenAI message per row) |
+| `ui_items` | What the chat shows: `session_id, item_json` |
+| `folders` | Working folders added by the user |
+| `bookmarks` | Pins and folders in the sidebar: `kind (folder|pin), name, session_id, parent_id, sort_order, collapsed` |
+| `usage` | Per-model-call ledger: `ts, session_id, agent_id, model, prompt, cached, cache_write, completion` |
+
+`saveMessages` / `saveUiItems` replace a chat's rows in a transaction after each run, so the stored state is always a consistent snapshot of the last finished run. If the app is killed mid-run the previous snapshot loads, and `settle` marks stale "running" UI items interrupted.
+
+`settings.json` and `pricing.json` live beside the DB; per-chat `sessions/<id>/session.db` is the `sql` tool's scratch database.
+
+## 5. Forks, ordering and the tree
+
+**Fork at a turn** (`src/shared/fork.ts`): a fork copies the history up to and including a chosen user turn and its complete response into a new chat with `parent_id` and `fork_turn`.
+
+- `sliceMessagesAtTurn(messages, turn)`: scans for real user messages, counting turns, and cuts right before turn `turn + 1`, so notifications that belong to the chosen turn are kept.
+- `sliceItemsAtTurn(items, turn)`: same for UI items (a `user` item starts a turn).
+- If the source was compacted, the live-turn ↔ UI-turn map is sliced and stored in the fork (see memory-compaction.md §8).
+- Deleting a chat re-parents its forks onto the deleted chat's parent.
+
+**Tree** (`buildTree`): groups chats by `parent_id` into a forest; chats whose parent is missing are promoted to roots (orphans never disappear).
+
+**Manual order**: `orderRows` sorts rows never arranged by the user (`sort_order` null) first, newest first, then arranged rows by `sort_order`. `reorderIds(ids, id, target, before)` yields the new order for drag-and-drop (appends when there is no target) and the sort orders are rewritten densely. `isWithin(tree, id, ancestor)` blocks dropping a bookmark folder into its own subtree.
+
+## 6. Memory export and import
+
+"Memory" here means carrying knowledge from one chat into another without sharing a conversation.
+
+- **Export** (`src/shared/export.ts`): renders chosen turns to Markdown starting with `supertm-export: 1` plus title, folder and model. Options: include tool calls/results, include thinking. Sub-agents appear as nested sections; attachments appear as a one-line note ("not included in the export"). Files are written to `~/Documents/<app name>/shares`.
+- **Import:** attach exports to a new chat (`memories` column). `buildMainSystem` inlines them into the system prompt inside `<memory>` tags, capped at 60,000 chars in total, labelled as *prior context to build on, not instructions*. Because they live in the system message they are untouched by compaction.
+- Typical use: compact or export a finished investigation, start a clean chat with the export attached.
+
+### Sync sessions (`src/main/sync.ts`, Settings → Sync sessions)
+
+Moves chats between Macs through any shared folder. The session UUID is what identifies "the same chat" on both sides.
+
+- **Export:** `VACUUM INTO` writes a consistent standalone copy of the whole `supertm.db` (safe while the app has it open in WAL mode) to `<folder>/supertm-sessions.db`, via a temp file and rename so a reader never sees half a file. `supertm-sessions.json` records the app, export time, host name and session count. A later export replaces the earlier one.
+- **Scan:** opens the export read-only and lists every session with its last update and turn count, plus the local row with the same UUID if one exists.
+- **Import:** for each checked session:
+
+  | Same UUID on this Mac? | Choice | Result |
+  |---|---|---|
+  | No | — | Added with its own UUID, history and UI log. |
+  | Yes | **Skip** (default) | Nothing changes. |
+  | Yes | **Overwrite local** | The local row, history and UI log are replaced, and its `sql` scratch db is cleared. Forks and pins that point at the UUID stay attached. Confirmed in a dialog that lists each chat's time difference. |
+  | Yes | **Import as fork** | Added with a **new UUID** as a fork of the local chat (`parent_id` = the UUID, title `… · imported`). |
+
+  The UI shows each conflict's difference between the import's and the local `updated_at` ("2 h 5 min newer"). An imported fork keeps its `parent_id` when the parent is imported too or already exists here; otherwise it is filed at the top level. Overwriting a chat that is running is refused. Usage records, settings and bookmarks are not imported.
+
+## 7. Usage and cost
+
+**Capture:** every model request emits a `usage` event; main stores it in the `usage` table and pushes `{type:'usage'}` so the panel and the header ring refresh.
+
+**Cost math** (`src/shared/usage.ts`), per model per day, with prices in USD per million tokens:
+
+```
+uncached input = prompt − cached − cacheWrite         (prompt tokens include the cached ones)
+cost = ( uncached × input
+       + output  × output
+       + cached  × cache_read_input
+       + cacheWrite × (cache_write_input ?? input) ) / 1e6
+```
+
+- `pricing.json` holds `models.<key>.prices[]` entries with `from: YYYY-MM-DD`; `priceFor` takes the latest entry whose `from` ≤ the usage day, so a price change never rewrites history.
+- `pricingKey("anthropic/claude-opus-5-5")` → `claude-opus-5-5`; it also tries `<name>-maas` and the name without `-maas`.
+- A model without a price still counts tokens and produces a warning; with no pricing file at all the panel shows tokens only.
+- **Local tab:** aggregates the ledger (by day, model and chat). **Project tab:** `getProjectUsage` (`src/main/usage.ts`) takes the first enabled Vertex provider, mints a token with its `VertexAuth`, and pages `GET monitoring.googleapis.com/v3/projects/{p}/timeSeries` for `aiplatform.googleapis.com/publisher/online_serving/token_count` (hourly `ALIGN_SUM`, `REDUCE_SUM` grouped by `model_user_id`, `publisher`, token `type`, `request_type`). `monitoringRows` (pure, tested) attributes each hourly point to the local day of its start and sums `input`, `output`, `cache_read_input`, `cache_write_input`, `cache_write_1h_input` per (day, model); `projectReport` prices them with the same `pricing.json`. The window is clipped to ~42 days (metric retention); a 403 means the credential lacks `roles/monitoring.viewer`.
+- **Budget ring:** today's local spend ÷ `dailyBudget`.
+
+
+## 8. Tool internals
+
+**Shell manager.** `shell` runs `zsh -lc <command>` in the chat's folder as a detached process group.
+- *sync*: waits up to `timeout` (default 120 s, max 600 s); on timeout the group is killed and partial output returned. Output is tail-trimmed to 30,000 chars.
+- *async*: returns a `shellId` immediately; output goes to a bounded rolling buffer. `read_shell` returns new output since the last read (optionally waiting), `write_shell` sends stdin, `stop_shell` and `list_shells` manage them.
+- Kill = SIGTERM to the process group, SIGKILL after 3 s. Closing a chat's session (or the window) disposes the shell manager, which kills every shell still running.
+
+**web_fetch.** `fetch` with a 30 s timeout; HTML is converted to Markdown (scripts, styles, nav, footer, svg and similar chrome dropped; headings, links, lists, code and paragraph breaks kept; `raw=true` returns the HTML); non-HTML text is returned as is. Large pages are paged with `start_index` + `max_length` (default 5,000, max 20,000) and a hint tells the model how to continue.
+
+**sql.** One SQLite file per chat (`sessions/<id>/session.db`) with `todos(id, title, description, status ∈ pending|in_progress|done|blocked, …)` and `todo_deps(todo_id, depends_on)` created on first use. The prompt tells the model to track multi-step plans there. The tool executes any SQL the model sends (it can create its own tables for scratch data).
+
+**grep / glob.** `grep` shells out to ripgrep when available (fast, respects ignore files) and falls back to a JS walker; max 200 matches. `glob` translates `**`, `*`, `?` and `{a,b}` to a regular expression, walks up to 20,000 files (skipping `node_modules`, `.git`, `.venv`, `venv`, `__pycache__`, `out`, `dist`), returns at most 200 paths sorted.
+
+**edit_file.** Exact-string replace requiring exactly one match. Zero matches or several matches are errors that tell the model what to do (make `old_str` more specific). The replacement uses a function callback so `$&`-style sequences in `new_str` are never interpreted.
+
+**skill.** Looks the name up in the registry (project first, then personal) and returns the `SKILL.md` body plus its directory.
+
+**ask_user.** Emits an `ask` push event with optional choices; the loop blocks on the user's answer from the UI (`respondAsk`). Sub-agents can ask too; the card shows who.
+
+## 9. Settings reference
+
+| Setting | Default | Notes |
+|---|---|---|
+| `providers` | one Vertex provider from `BRAND.vertexDefaults`, else one Custom endpoint `http://127.0.0.1:4141/v1` | Model providers (§1); env `SUPERTM_BASE_URL`, `SUPERTM_API_KEY` seed the default |
+| `defaultModel` | `anthropic/claude-sonnet-5` | Per chat selectable |
+| `defaultCwd` | home | Folder for new chats |
+| `maxConcurrency` | 4 | Simultaneous model requests per chat (all agents) |
+| `maxTurnsMain` / `maxTurnsSub` | 50 / 30 | Loop iteration caps |
+| `reasoning` | `medium` | `off`/`low`/`medium`/`high`; per chat override |
+| `defaultMode` | `autopilot` | New chats: `autopilot` or `interactive` |
+| `autoCompact`, `compactThreshold`, `compactKeepRecent` | `suggest`, 80,000, 2 | See memory-compaction.md §9 |
+| `compactModel` | chat's model | Summaries / clustering model, falls back to the chat model |
+| `compactIdleMinutes`, `compactHardLimit`, `compactMinGain` | 5, 120,000, 20,000 | Cache-aware auto-compact policy (memory-compaction.md §9.1) |
+| `imageMaxEdge`, `imageQuality`, `imageMaxKB`, `docMaxChars` | 1568, 82, 1500, 80,000 | Attachment compression (§2) |
+| `requestMaxMB`, `imageTurns` | 20, 4 | Request budget (§3) |
+| `pricingPath`, `dailyBudget` | auto, 0 | Usage panel (§7) |
+
+## 10. Security notes
+
+- **Autopilot runs commands as the user without prompting.** There is no sandbox. Use Interactive mode for untrusted folders, prompts or documents. Attached documents and fetched web pages are text the model reads and could contain prompt-injection; Interactive mode is the safeguard.
+- The API key is encrypted at rest with the OS keychain via Electron `safeStorage`; it is never logged and never sent anywhere except the configured endpoint.
+- Chats, attachments' extracted text and usage live in plain (unencrypted) files under `~/.supertm`, protected only by your macOS account. Attached images are stored (resized) inside the DB.
+- The renderer has no Node access; all file, shell and network work happens in the main process behind the `DeskApi` IPC surface (`src/shared/api.ts`).

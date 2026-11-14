@@ -1,0 +1,72 @@
+{
+  "name": "supertm-desktop",
+  "version": "0.10.0",
+  "description": "Lightweight Copilot-like desktop agent for custom models",
+  "main": "out/main/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "cli": "tsx src/cli/index.ts",
+    "dist": "electron-vite build && electron-builder --mac",
+    "dist:dir": "electron-vite build && electron-builder --mac dir"
+  },
+  "build": {
+    "appId": "dev.careychou.supertm-desktop",
+    "productName": "SuperTM Desktop",
+    "files": [
+      "out/**"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.developer-tools"
+    },
+    "artifactName": "supertm-desktop-${version}-${arch}.${ext}",
+    "publish": null
+  },
+  "dependencies": {
+    "dompurify": "^3.4.17",
+    "highlight.js": "^11.12.0",
+    "js-yaml": "^5.5.0",
+    "marked": "^18.2.0",
+    "unpdf": "^2.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^4.1.12"
+  },
+  "license": "MIT",
+  "author": "Carey Chou",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/careychou/supertm-desktop.git"
+  }
+}
