@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
+import { SessionTree, type TreeRow } from './SessionTree'
 import { ageDiff, type ImportSource, type SyncCandidate, type SyncChoice, type SyncManifest } from '../../../shared/sync'
 import { BRAND } from '../../../shared/brand'
 import { useEscape } from '../hooks/useEscape'
 
 const KEY = 'syncDir'
 const when = (t: number) => new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-const base = (p: string) => p.split('/').filter(Boolean).pop() ?? p
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
 const CHOICES: Array<[SyncChoice, string]> = [['skip', 'Skip'], ['overwrite', 'Overwrite local'], ['fork', 'Import as fork']]
 const clean = (e: any) => String(e?.message ?? e).replace(/^Error invoking remote method '\w+': (Error: )?/, '')
@@ -16,59 +16,7 @@ const SOURCES: Array<{ kind: ImportSource; label: string; hint: string }> = [
   { kind: 'claude', label: 'Claude Code', hint: 'Claude Code projects (~/.claude/projects, or one project folder in it). Every chat is added as new.' }
 ]
 
-type Row = Pick<SyncCandidate, 'id' | 'title' | 'cwd' | 'updated_at' | 'turns' | 'parent_id' | 'group'>
-
-/** Checkbox list of chats with a filter, select-all for what is shown, and optional folder headings. */
-function SessionPicker<T extends Row>({ rows, picked, setPicked, extra, rowClass }: {
-  rows: T[]; picked: Set<string>; setPicked(s: Set<string>): void; extra?: (r: T) => ReactNode; rowClass?: (r: T) => string
-}) {
-  const [q, setQ] = useState('')
-  const shown = useMemo(() => {
-    const k = q.trim().toLowerCase()
-    return k ? rows.filter((r) => `${r.title} ${r.cwd}`.toLowerCase().includes(k)) : rows
-  }, [rows, q])
-  const grouped = rows.some((r) => r.group)
-  const groups = useMemo(() => {
-    const m = new Map<string, T[]>()
-    for (const r of shown) { const g = grouped ? r.group ?? '' : ''; m.set(g, [...(m.get(g) ?? []), r]) }
-    return [...m.entries()]
-  }, [shown, grouped])
-  const all = shown.length > 0 && shown.every((r) => picked.has(r.id))
-  const setMany = (ids: string[], on: boolean) => { const n = new Set(picked); ids.forEach((id) => (on ? n.add(id) : n.delete(id))); setPicked(n) }
-  return (
-    <>
-      <div className="row-actions">
-        <input className="sync-filter" placeholder={`Filter ${rows.length} sessions by title or folder…`} value={q} onChange={(e) => setQ(e.target.value)} />
-        <span className="muted small">{picked.size} selected</span>
-      </div>
-      <div className="sync-scroll">
-        <table className="sync-table">
-          <thead><tr>
-            <th><input type="checkbox" checked={all} title="Select every session shown" onChange={() => setMany(shown.map((r) => r.id), !all)} /></th>
-            <th>Session</th><th>Last updated</th>{extra && <th>On this Mac</th>}
-          </tr></thead>
-          <tbody>
-            {groups.map(([g, rs]) => [
-              grouped && (
-                <tr key={`g:${g}`} className="sync-group"><td><input type="checkbox" checked={rs.every((r) => picked.has(r.id))} onChange={(e) => setMany(rs.map((r) => r.id), e.target.checked)} /></td>
-                  <td colSpan={extra ? 3 : 2} title={g}>📂 {base(g) || g} <span className="muted small">· {plural(rs.length, 'session')}</span></td></tr>
-              ),
-              ...rs.map((r) => (
-                <tr key={r.id} className={rowClass?.(r) ?? ''}>
-                  <td><input type="checkbox" checked={picked.has(r.id)} onChange={(e) => setMany([r.id], e.target.checked)} /></td>
-                  <td><div className="sync-title">{r.title}</div><div className="muted small" title={r.cwd}>{[!grouped && `📂 ${base(r.cwd)}`, r.turns > 0 && plural(r.turns, 'turn'), r.parent_id && 'fork'].filter(Boolean).join(' · ')}</div></td>
-                  <td className="small">{when(r.updated_at)}</td>
-                  {extra && <td className="small">{extra(r)}</td>}
-                </tr>
-              ))
-            ])}
-          </tbody>
-        </table>
-        {!shown.length && <div className="muted small sync-empty">No sessions match.</div>}
-      </div>
-    </>
-  )
-}
+type Row = TreeRow
 
 /** Export step 2: after the destination is chosen, pick the chats to write. */
 function ExportDialog({ dir, onClose, onDone }: { dir: string; onClose(): void; onDone(msg: string): void }) {
@@ -96,7 +44,7 @@ function ExportDialog({ dir, onClose, onDone }: { dir: string; onClose(): void; 
       <div className="modal sync-dialog" onClick={(e) => e.stopPropagation()}>
         <h3>Export sessions</h3>
         <div className="muted small">To <b title={dir}>{dir}</b>. This replaces an earlier export in that folder. Every session is selected; uncheck the ones to leave out.</div>
-        {rows ? <SessionPicker rows={rows} picked={picked} setPicked={setPicked} /> : <div className="muted">Loading…</div>}
+        {rows ? <SessionTree rows={rows} picked={picked} setPicked={setPicked} /> : <div className="muted">Loading…</div>}
         <div className="row-actions modal-foot">
           <span className="muted small">{err}</span>
           <div className="spacer" />
@@ -196,10 +144,10 @@ export function SyncTab() {
           {plural(list.length, 'session')}.{' '}
           {owned ? 'Chats already on this Mac are unchecked; check one to choose what to do with it.' : 'Each chat you pick is added as a new chat (its old ID is not used, so nothing conflicts).'}
         </div>
-        <SessionPicker
-          rows={list} picked={picked} setPicked={setPicked}
+        <SessionTree
+          rows={list} picked={picked} setPicked={setPicked} extraLabel={owned && list.some((x) => x.local) ? `${list.filter((x) => x.local).length} already on this Mac` : undefined}
           rowClass={(s) => (s.local ? 'conflict' : '')}
-          extra={owned ? (s) => !s.local ? <span className="muted">New</span> : <>
+          extra={owned ? (s) => !s.local ? null : <>
             <div className="sync-warn">⚠ Same ID, local updated {when(s.local.updated_at)}: import is <b>{ageDiff(s.updated_at, s.local.updated_at)}</b></div>
             {picked.has(s.id) && (
               <select value={choice[s.id] ?? 'skip'} onChange={(e) => setChoice({ ...choice, [s.id]: e.target.value as SyncChoice })}>

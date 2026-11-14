@@ -413,3 +413,15 @@ button.danger { color: var(--fail); }
 .sync-empty { padding: 10px; }
 .modal.sync-dialog { width: min(720px, 90vw); }
 .sync-dialog h3 { margin: 0 0 6px; }
+.sync-scroll.tree { font-size: 13.5px; }
+.tree-row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px 6px 8px; border-bottom: 1px solid #f0f2f4; }
+.tree-row > input { margin-top: 3px; flex: none; }
+.tree-head { position: sticky; top: 0; background: #fff; z-index: 1; font-weight: 600; color: var(--muted); font-size: 12.5px; border-bottom-color: #e5e7eb; }
+.tree-folder { background: #f6f8fa; }
+.modal .tree-toggle { flex: 1; min-width: 0; border: 0; background: none; padding: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13.5px; }
+.modal .tree-toggle:hover { background: none; text-decoration: underline; }
+.tree-chev { display: inline-block; width: 14px; color: var(--muted); }
+.tree-main { flex: 1; min-width: 0; }
+.tree-when { flex: none; width: 150px; text-align: right; }
+.tree-session.conflict { background: #fff8e6; }
+.tree-extra { margin-top: 4px; }

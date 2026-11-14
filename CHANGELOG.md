@@ -22,11 +22,13 @@ Settings → **Sync sessions** → *Import from* has three sources:
 **Export sessions…** asks for a destination folder first, then shows every chat (grouped by folder, with a filter) all checked. Uncheck the ones to leave out, then confirm. The export holds only the chats you picked.
 
 ### Improved: session picker
-Export and all three import sources share one picker:
-- a title/folder filter
-- select-all for what is shown
-- per-folder checkboxes
+Export and all three import sources share one picker, shown as a **collapsible tree by working folder** (e.g. `~ › projects › demo`):
+- folders nest by path; single-child chains collapse into one row (`Library/CloudStorage/…`)
+- forks sit under their parent chat
+- a title/folder filter (matching folders open automatically) and Expand all / Collapse all
+- tri-state folder checkboxes and select-all for what is shown
 - a running "N selected" count
+- small lists open fully; large ones (hundreds of Copilot chats) open only the top folders
 
 ### Azure
 - **Responses API fallback:** deployments that refuse tools on `chat/completions` (newer reasoning and codex models) are retried on the Responses API automatically and remembered per deployment.
