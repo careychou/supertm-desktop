@@ -1,6 +1,7 @@
 import type { ChatRequest, Delta, Message, ModelAdapter } from '../types'
 import { parseSSE } from './sse'
 import { fitRequest, type RequestBudget } from '../content'
+import { responsesBody, responsesDeltas } from './responses'
 
 export interface AdapterConfig {
   baseUrl: string
@@ -21,7 +22,7 @@ export interface AdapterConfig {
 
 /** Strips engine-only fields before sending messages upstream. */
 function wireMessages(msgs: Message[], budget?: RequestBudget): unknown[] {
-  return (budget ? fitRequest(msgs, budget) : msgs).map((m) => {
+  return fitMessages(msgs, budget).map((m) => {
     if (m.role === 'assistant') {
       const { reasoning: _r, ...rest } = m
       return rest
@@ -36,6 +37,8 @@ export const AZURE_API_VERSION = '2025-04-01-preview'
 const azureHost = (u: string) => u.trim().replace(/\/+$/, '').replace(/\/openai(\/v1)?$/, '')
 
 export class OpenAIAdapter implements ModelAdapter {
+  /** Azure deployments that refused function tools on chat/completions; they go to /openai/v1/responses. */
+  private responsesOnly = new Set<string>()
   constructor(private cfg: AdapterConfig) {}
 
   private get azure() { return this.cfg.kind === 'azure' }
@@ -62,6 +65,7 @@ export class OpenAIAdapter implements ModelAdapter {
   }
 
   async *stream(req: ChatRequest, signal: AbortSignal): AsyncIterable<Delta> {
+    if (this.azure && this.responsesOnly.has(req.model)) return yield* this.streamResponses(req, signal)
     const body: Record<string, unknown> = {
       model: req.model,
       messages: wireMessages(req.messages, this.cfg.budget?.()),
@@ -84,17 +88,20 @@ export class OpenAIAdapter implements ModelAdapter {
       signal
     })
     let res = await post()
+    // Some Azure models (e.g. gpt-6.1-sol) only take function tools on the Responses API
+    if (this.azure && res.status === 400 && body.tools) {
+      const t = await res.clone().text().catch(() => '')
+      if (/\/responses/i.test(t) && /tool/i.test(t)) {
+        this.responsesOnly.add(req.model)
+        return yield* this.streamResponses(req, signal)
+      }
+    }
     // Azure non-reasoning deployments (e.g. gpt-4o) reject reasoning_effort: retry once without it
     if (this.azure && res.status === 400 && body.reasoning_effort) {
       const t = await res.clone().text().catch(() => '')
       if (/reasoning_effort|reasoning\.effort|unsupported_parameter/i.test(t)) { delete body.reasoning_effort; res = await post() }
     }
-    if (!res.ok || !res.body) {
-      const t = await res.text().catch(() => '')
-      let msg = t
-      try { msg = JSON.parse(t).error?.message ?? t } catch { /* raw text */ }
-      throw Object.assign(new Error(`HTTP ${res.status}: ${msg.slice(0, 500)}`), { status: res.status })
-    }
+    await failIfBad(res)
     for await (const data of parseSSE(res.body as unknown as AsyncIterable<Uint8Array>)) {
       let j: any
       try { j = JSON.parse(data) } catch { continue }
@@ -120,6 +127,27 @@ export class OpenAIAdapter implements ModelAdapter {
     }
     yield* think.flush()
   }
+
+  private async *streamResponses(req: ChatRequest, signal: AbortSignal): AsyncIterable<Delta> {
+    const res = await (this.cfg.fetch ?? fetch)(`${azureHost(this.cfg.baseUrl)}/openai/v1/responses`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...this.headers() },
+      body: JSON.stringify(responsesBody(req, fitMessages(req.messages, this.cfg.budget?.()))),
+      signal
+    })
+    await failIfBad(res)
+    yield* responsesDeltas(res.body as unknown as AsyncIterable<Uint8Array>)
+  }
+}
+
+const fitMessages = (msgs: Message[], budget?: RequestBudget) => (budget ? fitRequest(msgs, budget) : msgs)
+
+async function failIfBad(res: Response): Promise<void> {
+  if (res.ok && res.body) return
+  const t = await res.text().catch(() => '')
+  let msg = t
+  try { msg = JSON.parse(t).error?.message ?? t } catch { /* raw text */ }
+  throw Object.assign(new Error(`HTTP ${res.status}: ${msg.slice(0, 500)}`), { status: res.status })
 }
 
 /** Splits streamed text into reasoning (inside <think>…</think>) and visible text, across chunk boundaries. */

@@ -60,6 +60,54 @@ describe('Azure OpenAI adapter', () => {
     f.close()
   })
 
+  it('falls back to the Responses API when chat/completions refuses function tools, and remembers it', async () => {
+    const sse = (evs: object[]) => evs.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('')
+    const f = await fake((h) => {
+      if (h.url.includes('/chat/completions')) return { status: 400, body: '{"error":{"message":"Function tools with reasoning_effort are not supported for gpt-6.1-sol in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to \'none\'."}}' }
+      return { status: 200, body: sse([
+        { type: 'response.reasoning_summary_text.delta', delta: 'plan' },
+        { type: 'response.output_text.delta', delta: 'ok' },
+        { type: 'response.output_item.added', output_index: 2, item: { type: 'function_call', call_id: 'c1', name: 'glob', arguments: '' } },
+        { type: 'response.function_call_arguments.delta', output_index: 2, delta: '{"p":1}' },
+        { type: 'response.completed', response: { usage: { input_tokens: 10, output_tokens: 3, input_tokens_details: { cached_tokens: 4 } } } }
+      ]) }
+    })
+    const a = new OpenAIAdapter({ kind: 'azure', baseUrl: f.host, apiKey: 'az', deployments: ['sol'] })
+    const r = {
+      model: 'sol', reasoning: 'low' as const,
+      tools: [{ type: 'function' as const, function: { name: 'glob', description: 'd', parameters: { type: 'object' } } }],
+      messages: [
+        { role: 'user' as const, content: 'hi' },
+        { role: 'assistant' as const, content: null, tool_calls: [{ id: 'c0', type: 'function' as const, function: { name: 'glob', arguments: '{}' } }] },
+        { role: 'tool' as const, tool_call_id: 'c0', content: 'a.ts' }
+      ]
+    }
+    const out: Delta[] = []
+    for await (const d of a.stream(r, new AbortController().signal)) out.push(d)
+    expect(out).toEqual([
+      { type: 'reasoning', text: 'plan' },
+      { type: 'text', text: 'ok' },
+      { type: 'tool_call', index: 0, id: 'c1', name: 'glob', args: undefined },
+      { type: 'tool_call', index: 0, args: '{"p":1}' },
+      { type: 'usage', prompt: 10, completion: 3, cached: 4, cacheWrite: 0 },
+      { type: 'finish', reason: 'tool_calls' }
+    ])
+    const rs = f.hits[1]
+    expect(rs.url).toBe('/openai/v1/responses')
+    expect(rs.headers['api-key']).toBe('az')
+    expect(rs.body.tools).toEqual([{ type: 'function', name: 'glob', description: 'd', parameters: { type: 'object' } }])
+    expect(rs.body.reasoning).toEqual({ effort: 'low', summary: 'auto' })
+    expect(rs.body.input).toEqual([
+      { role: 'user', content: 'hi' },
+      { type: 'function_call', call_id: 'c0', name: 'glob', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'c0', output: 'a.ts' }
+    ])
+    for await (const _ of a.stream(r, new AbortController().signal)) { /* drain */ }
+    expect(f.hits.length).toBe(3)
+    expect(f.hits[2].url).toBe('/openai/v1/responses')
+    f.close()
+  })
+
   it('lists the configured deployments as models without a network call', async () => {
     const a = new OpenAIAdapter({ kind: 'azure', baseUrl: 'https://x.openai.azure.com', apiKey: 'k', deployments: [' gpt-5 ', '', 'mini'] })
     expect(await a.listModels()).toEqual(['gpt-5', 'mini'])

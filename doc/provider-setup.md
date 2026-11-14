@@ -120,6 +120,21 @@ Requests go to
 header. The app sends `max_completion_tokens`. When **Thinking** is on it also sends
 `reasoning_effort`; if a deployment rejects that field (400), the request is retried without it.
 
+Some newer models (e.g. `gpt-6.1-sol`) refuse function tools on chat/completions and point to the
+Responses API. When a deployment answers 400 that way, the app switches it to
+`<host>/openai/v1/responses` (stateless, `store: false`, full history each turn) and remembers the
+choice for that deployment until the app restarts. Nothing to configure.
+
+**Azure AI Foundry (AI Services) resources** work the same way. A Foundry project URL such as
+`ai.azure.com/.../<subscription>,<resource-group>,,<resource>,<project>/...` names the resource;
+use `https://<resource>.openai.azure.com` as the host (the "Azure OpenAI Legacy API" endpoint), not
+the `services.ai.azure.com` or `cognitiveservices.azure.com` hosts. With the Azure CLI:
+
+```bash
+az cognitiveservices account deployment list -g <resource-group> -n <resource> -o table
+az cognitiveservices account keys list -g <resource-group> -n <resource> --query key1 -o tsv | pbcopy
+```
+
 ### 3. Test and use
 
 Azure has no "list deployments" call on the data plane, so **Test** only checks that the host is
