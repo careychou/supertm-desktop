@@ -1,0 +1,44 @@
+# Release notes
+
+## 1.0.0 — major release
+
+1.0 makes the app a home for **all** your agent chats. It brings in your GitHub Copilot and Claude Code history, moves chosen chats between Macs, and adds real cost tracking for Azure.
+
+### New: import from GitHub Copilot and Claude Code
+Settings → **Sync sessions** → *Import from* has three sources:
+
+| Source | Pick | What happens |
+|---|---|---|
+| **This app** (an export folder) | The folder you exported to on another Mac | Same flow as before. A chat already on this Mac shows how much newer or older the import is, and you choose **Skip**, **Overwrite local** or **Import as fork**. |
+| **GitHub Copilot** | A Copilot session-state folder (`~/.copilot` or a synced copy) | Lists every Copilot chat with turns, grouped by working folder, titled by its session name. |
+| **Claude Code** | `~/.claude/projects` (or one project) | Lists every Claude Code chat, grouped by project, titled by its custom title or first prompt. |
+
+- Copilot and Claude chats are always **added as new chats** with new IDs, so nothing conflicts.
+- Each import keeps the full transcript: prompts, answers, reasoning, tool calls and results, plus earlier compaction summaries. You can continue it on your own models right away.
+- Sub-agent chatter, autopilot and notification messages, slash commands and hook noise are filtered out.
+- Large histories are fast: 500+ Copilot chats are listed in under a second, and a 380 MB transcript imports in about a second.
+
+### Improved: export
+**Export sessions…** asks for a destination folder first, then shows every chat (grouped by folder, with a filter) all checked. Uncheck the ones to leave out, then confirm. The export holds only the chats you picked.
+
+### Improved: session picker
+Export and all three import sources share one picker:
+- a title/folder filter
+- select-all for what is shown
+- per-folder checkboxes
+- a running "N selected" count
+
+### Azure
+- **Responses API fallback:** deployments that refuse tools on `chat/completions` (newer reasoning and codex models) are retried on the Responses API automatically and remembered per deployment.
+- **Cost estimation:** the AI usage panel shows Azure token usage from Azure Monitor and actual billed cost from Cost Management for the resource. Local estimates use the price of the model the deployment actually serves.
+
+### Also in this release (since 0.9)
+- Native **Google Vertex AI** provider: service-account auth, Claude with prompt caching, OpenAI-compatible models, Cloud Monitoring project usage. No local proxy is needed.
+- **Model providers** tab: Vertex AI, Azure OpenAI and custom OpenAI-compatible endpoints side by side, with a primary provider. Chats keep their provider.
+- **Memory compaction** settings: a separate compaction model and cache-aware auto-compact that waits for the prompt cache to expire.
+- **Skills & agents** tab listed per working folder, plus Personal.
+- **Esc** closes dialogs and menus, topmost first.
+
+### Upgrade notes
+- Existing chats, settings and exports are unchanged. Exports from 0.10 import fine.
+- Importing from Copilot or Claude only reads their folders; it never changes them.

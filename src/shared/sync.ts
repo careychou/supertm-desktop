@@ -3,9 +3,14 @@ export type SyncChoice = 'overwrite' | 'fork' | 'skip'
 export interface SyncManifest { app: string; exportedAt: number; host: string; sessions: number }
 export interface SyncCandidate {
   id: string; title: string; cwd: string; model: string; updated_at: number; parent_id: string | null; turns: number
-  /** The local chat with the same UUID, if any. */
+  /** The local chat with the same UUID, if any (always null for another tool's chats). */
   local: { title: string; updated_at: number } | null
+  /** Heading the import list groups by: the chat's folder (Claude Code project / Copilot cwd). */
+  group?: string
 }
+/** Where an import comes from: this app's own export, or another tool's local session history. */
+export type ImportSource = 'owned' | ExternalSource
+export type ExternalSource = 'copilot' | 'claude'
 export interface SyncImportResult { added: number; overwritten: number; forked: number; skipped: number; ids: string[] }
 
 /** "2 h 5 min newer" / "3 days older" / "same time": the import's last turn compared with the local one. */

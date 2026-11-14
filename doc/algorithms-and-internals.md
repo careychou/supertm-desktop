@@ -183,7 +183,7 @@ SQLite via `node:sqlite` (`~/.supertm/supertm.db`). Migrations are additive `ALT
 
 Moves chats between Macs through any shared folder. The session UUID is what identifies "the same chat" on both sides.
 
-- **Export:** `VACUUM INTO` writes a consistent standalone copy of the whole `supertm.db` (safe while the app has it open in WAL mode) to `<folder>/supertm-sessions.db`, via a temp file and rename so a reader never sees half a file. `supertm-sessions.json` records the app, export time, host name and session count. A later export replaces the earlier one.
+- **Export:** *Export sessions…* asks for a destination folder, then opens a picker with every chat checked (grouped by folder, with a filter); uncheck any to leave out. `VACUUM INTO` writes a consistent standalone copy of `supertm.db` (safe while the app has it open in WAL mode) to `<folder>/supertm-sessions.db`, via a temp file and rename so a reader never sees half a file. `supertm-sessions.json` records the app, export time, host name and session count. When only some chats are picked, the copy is pruned to them (sessions, messages, UI log, usage and pins of the others are deleted, then `VACUUM`) before the rename, and the manifest count is read from the copy. A later export replaces the earlier one.
 - **Scan:** opens the export read-only and lists every session with its last update and turn count, plus the local row with the same UUID if one exists.
 - **Import:** for each checked session:
 
@@ -195,6 +195,20 @@ Moves chats between Macs through any shared folder. The session UUID is what ide
   | Yes | **Import as fork** | Added with a **new UUID** as a fork of the local chat (`parent_id` = the UUID, title `… · imported`). |
 
   The UI shows each conflict's difference between the import's and the local `updated_at` ("2 h 5 min newer"). An imported fork keeps its `parent_id` when the parent is imported too or already exists here; otherwise it is filed at the top level. Overwriting a chat that is running is refused. Usage records, settings and bookmarks are not imported.
+
+### Import from GitHub Copilot and Claude Code (`src/main/import-external.ts`)
+
+*Import from* offers three sources: a SuperTM export (above), **GitHub Copilot** and **Claude Code**. Their IDs mean nothing here, so every picked chat is **added with a new UUID**; nothing conflicts and importing twice gives two copies.
+
+| Source | Folder | Read from |
+|---|---|---|
+| GitHub Copilot | `~/.copilot` (or a copy, or its `session-state/`) | `session-store.db` (`sessions`, `turns`; copied with its `-wal` to a temp dir first, since it may be live or still syncing) and `session-state/<id>/events.jsonl` + `workspace.yaml` |
+| Claude Code | `~/.claude/projects` or one project folder in it | `<encoded-cwd>/<uuid>.jsonl` (sub-agent transcripts in `<uuid>/subagents/` are not imported) |
+
+- **Scan** lists chats with at least one real prompt, grouped by working folder. Title: Copilot's workspace name, else its summary, else the first prompt; Claude's custom title or summary, else the first prompt. Copilot turn counts come from `turns`, else a fast line count of `events.jsonl`; neither scan parses whole transcripts.
+- **What counts as a prompt:** Copilot `user.message` events without a `source` (agent, autopilot and workspace notifications are skipped); Claude `user` lines that are not meta, sidechain or compact summaries, have `origin.kind` absent or `human`, and are not slash-command, hook, system-reminder, task-notification or interrupt noise. Claude *wake* envelopes are unwrapped to the message text. Sub-agent events (`agentId`, `parentToolCallId`, `isSidechain`) are skipped.
+- **Conversion:** the UI log keeps the full transcript as user, assistant (with reasoning), tool (arguments clipped to 4k, output to 20k characters) and compaction items. The model history is text only: each turn is the prompt plus one assistant message with the turn's answer and a `(Tools used: name ×n)` tally, so the provider never receives another tool's tool-call IDs. A Copilot `session.compaction_complete` or Claude compact summary becomes this app's compaction summary pair, and `compact_offset` is set to the number of turns it covers so turn mapping stays correct.
+- The chat keeps the source's working folder (home if missing), first and last timestamps, and uses the default model.
 
 ## 7. Usage and cost
 

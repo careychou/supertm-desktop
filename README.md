@@ -10,7 +10,7 @@ It reads skills and agents from the same places Copilot does — `<folder>/.gith
 
 ## Download
 
-Grab the latest build from **[Releases](https://github.com/careychou/supertm-desktop/releases)**:
+Grab the latest build from **[Releases](https://github.com/careychou/supertm-desktop/releases)** (what's new: [CHANGELOG.md](CHANGELOG.md)):
 
 | File | What |
 |---|---|
@@ -47,7 +47,8 @@ On first launch open **⚙ Settings → Model providers**, add a provider (Googl
 - **Fork from any turn** — hover a turn → *⑂ Fork from here*. The fork gets the history up to that point and is filed **under the chat it came from** (forks of forks nest).
 - **Drag & drop** — drag chats to reorder them (within the same folder/level), drag a chat onto **Bookmarks** or a bookmark folder to pin it, and drag pins/folders to reorder or nest them.
 - **Rename & delete** — double-click to rename, or use the ⋯ menu / right-click.
-- **Sync sessions** — Settings → *Sync sessions* exports every chat to a folder (OneDrive, Google Drive, USB) and, on another Mac, imports the ones you pick. Chats are matched by a unique ID; when one already exists you see how much newer or older the import is and choose **Skip**, **Overwrite local** or **Import as fork** (a copy with a new ID under the local chat).
+- **Sync sessions** — Settings → *Sync sessions* exports all or some chats to a folder (OneDrive, Google Drive, USB) and, on another Mac, imports the ones you pick. Chats are matched by a unique ID; when one already exists you see how much newer or older the import is and choose **Skip**, **Overwrite local** or **Import as fork** (a copy with a new ID under the local chat).
+- **Import from GitHub Copilot and Claude Code** — the same tab reads a Copilot session-state folder (`~/.copilot`) or Claude Code projects (`~/.claude/projects`), lists their chats by folder, and imports the ones you pick as new chats with the full transcript, ready to continue on your own models.
 - **Bookmarks** — a pinned section at the top of the sidebar with nestable folders.
 - **Resizable sidebar** — drag its edge to resize (double-click resets), drag it past the minimum width or press **⌘B** to hide it, and use ◧ or ⌘B to show it again. The width and the hidden/shown state are remembered.
 

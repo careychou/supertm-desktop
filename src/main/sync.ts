@@ -12,14 +12,27 @@ const stem = BRAND.dbFile.replace(/\.db$/, '')
 export const SYNC_DB = `${stem}-sessions.db`
 export const SYNC_MANIFEST = `${stem}-sessions.json`
 
-/** Writes the whole session database plus a small manifest into `dir`. */
-export function exportSessions(store: Store, dir: string, app: string, now = Date.now()): SyncManifest {
+/** Writes the session database (every chat, or just `ids`) plus a small manifest into `dir`. */
+export function exportSessions(store: Store, dir: string, app: string, now = Date.now(), ids?: string[]): SyncManifest {
   fs.mkdirSync(dir, { recursive: true })
   const file = path.join(dir, SYNC_DB)
   const tmp = file + '.tmp'
   store.exportTo(tmp)
+  let sessions: number
+  const db = new DatabaseSync(tmp)
+  try {
+    if (ids) {
+      db.exec('CREATE TEMP TABLE keep (id TEXT PRIMARY KEY)')
+      const ins = db.prepare('INSERT OR IGNORE INTO keep VALUES (?)')
+      for (const id of ids) ins.run(id)
+      for (const [t, col] of [['messages', 'session_id'], ['ui_items', 'session_id'], ['usage', 'session_id'], ['bookmarks', 'session_id'], ['sessions', 'id']]) {
+        if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t)) db.exec(`DELETE FROM ${t} WHERE ${col} IS NOT NULL AND ${col} NOT IN (SELECT id FROM keep)`)
+      }
+      db.exec('VACUUM')
+    }
+    sessions = (db.prepare('SELECT COUNT(*) AS n FROM sessions').get() as { n: number }).n
+  } finally { db.close() }
   fs.renameSync(tmp, file)
-  const sessions = store.listSessions().length
   const m: SyncManifest = { app, exportedAt: now, host: os.hostname(), sessions }
   fs.writeFileSync(path.join(dir, SYNC_MANIFEST), JSON.stringify(m, null, 2))
   return m

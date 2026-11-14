@@ -17,6 +17,8 @@ import { insertBeforeTurn, liveTurnMap, orderRows, reorderIds, sliceItemsAtTurn,
 import { prepareAttachment, type AttachInput } from './attachments'
 import type { Attachment } from '../engine/content'
 import { exportSessions, importSessions, resolveSyncFile, scanSessions } from './sync'
+import type { ExternalSource } from '../shared/sync'
+import { externalDefaults, importExternal, scanClaude, scanCopilot, copilotRoot } from './import-external'
 import { azureUsageProvider, getAzureUsage, getLocalUsage, getProjectUsage, loadPricing, usageProvider } from './usage'
 import { autoCompactDecision, estimateTokens, keepLastPlan, splitHistoryTurns, type CompactPlan } from '../engine/compact'
 
@@ -265,8 +267,8 @@ function registerIpc() {
     const [g] = await router([{ ...p, enabled: true }]).listGroups(true)
     return { models: g?.models ?? [], error: g?.error }
   })
-  ipcMain.handle('pickFolder', async () => {
-    const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory', 'createDirectory'] })
+  ipcMain.handle('pickFolder', async (_e, opts?: { defaultPath?: string; title?: string; buttonLabel?: string }) => {
+    const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory', 'createDirectory', 'showHiddenFiles'], defaultPath: opts?.defaultPath || undefined, title: opts?.title, buttonLabel: opts?.buttonLabel })
     return r.canceled ? null : r.filePaths[0]
   })
   ipcMain.handle('pickFile', async (_e, opts?: { title?: string; extensions?: string[] }) => {
@@ -298,7 +300,17 @@ function registerIpc() {
       if (!sess.isBusy && !sess.shells.list().some((sh) => !sh.done)) { sess.dispose(); live.delete(id) }
     }
   })
-  ipcMain.handle('syncExport', (_e, dir: string) => exportSessions(store, dir, BRAND.name))
+  ipcMain.handle('syncExport', (_e, dir: string, ids?: string[]) => exportSessions(store, dir, BRAND.name, Date.now(), ids))
+  ipcMain.handle('importDefaults', () => externalDefaults())
+  ipcMain.handle('importScan', async (_e, kind: ExternalSource, dir: string) => {
+    const root = kind === 'copilot' ? copilotRoot(dir) : dir
+    return { root, sessions: kind === 'copilot' ? await scanCopilot(root) : await scanClaude(root) }
+  })
+  ipcMain.handle('importExternal', async (_e, kind: ExternalSource, root: string, ids: string[]) => {
+    const r = await importExternal(store, kind, root, ids, settings.defaultModel)
+    pushSessions()
+    return r
+  })
   ipcMain.handle('syncScan', (_e, dir: string) => { const file = resolveSyncFile(dir); return { file, ...scanSessions(store, file) } })
   ipcMain.handle('syncImport', (_e, file: string, picks: Array<{ id: string; choice?: 'overwrite' | 'fork' | 'skip' }>) => {
     // an overwritten chat must not keep running on its old history

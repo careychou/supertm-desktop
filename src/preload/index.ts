@@ -52,6 +52,9 @@ const api: DeskApi = {
   syncExport: inv('syncExport') as any,
   syncScan: inv('syncScan') as any,
   syncImport: inv('syncImport') as any,
+  importDefaults: inv('importDefaults') as any,
+  importScan: inv('importScan') as any,
+  importExternal: inv('importExternal') as any,
   onPush(cb) {
     const h = (_e: unknown, p: PushEvent) => cb(p)
     ipcRenderer.on('push', h)

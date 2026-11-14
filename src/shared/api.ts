@@ -1,7 +1,7 @@
 import type { UsageReport } from './usage'
 import type { AgentEvent, PermissionDecision, PermissionKind } from '../engine/types'
 import type { SessionRow, FolderRow, BookmarkRow } from '../main/store'
-import type { SyncCandidate, SyncChoice, SyncImportResult, SyncManifest } from './sync'
+import type { ExternalSource, SyncCandidate, SyncChoice, SyncImportResult, SyncManifest } from './sync'
 import type { Settings } from '../main/settings'
 import type { ModelGroup, ProviderEntry } from './providers'
 import type { Attachment } from '../engine/content'
@@ -70,7 +70,7 @@ export interface DeskApi {
   listModels(): Promise<{ models: string[]; groups: ModelGroup[]; error?: string }>
   /** Lists the models of an unsaved provider entry (Settings → Model providers → Test). */
   testProvider(p: ProviderEntry): Promise<{ models: string[]; error?: string }>
-  pickFolder(): Promise<string | null>
+  pickFolder(opts?: { defaultPath?: string; title?: string; buttonLabel?: string }): Promise<string | null>
   pickFile(opts?: { title?: string; extensions?: string[] }): Promise<string | null>
   getSettings(): Promise<Settings>
   getUsage(days: number): Promise<UsageReport>
@@ -78,11 +78,17 @@ export interface DeskApi {
   getAzureUsage(days: number): Promise<UsageReport>
   usageInfo(): Promise<{ project: string | null; azure: string | null; pricing: string | null }>
   saveSettings(s: Settings): Promise<void>
-  /** Sync sessions: copy the whole session database (plus a manifest) into a folder. */
-  syncExport(dir: string): Promise<SyncManifest>
+  /** Sync sessions: copy the session database (every chat, or just `ids`) plus a manifest into a folder. */
+  syncExport(dir: string, ids?: string[]): Promise<SyncManifest>
   /** Lists the sessions in an exported folder, flagging UUIDs that already exist here. */
   syncScan(dir: string): Promise<{ file: string; manifest: SyncManifest | null; sessions: SyncCandidate[] }>
   syncImport(file: string, picks: Array<{ id: string; choice?: SyncChoice }>): Promise<SyncImportResult>
+  /** Where GitHub Copilot / Claude Code keep their sessions on this Mac, when present. */
+  importDefaults(): Promise<Record<ExternalSource, string | null>>
+  /** Lists another tool's chats (candidate ids are Copilot session ids or Claude .jsonl paths). */
+  importScan(kind: ExternalSource, dir: string): Promise<{ root: string; sessions: SyncCandidate[] }>
+  /** Imports them with new UUIDs, so they never conflict. */
+  importExternal(kind: ExternalSource, root: string, ids: string[]): Promise<SyncImportResult>
   /** Omit `cwd` for personal (~/.copilot) items only. */
   registryInfo(cwd?: string): Promise<RegistryInfo>
   onPush(cb: (e: PushEvent) => void): () => void
