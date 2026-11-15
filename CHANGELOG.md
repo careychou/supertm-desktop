@@ -1,5 +1,16 @@
 # Release notes
 
+## 1.0.1
+
+### Improved: session picker is a folder tree
+Export and all three import sources (this app, GitHub Copilot, Claude Code) now show chats as a **collapsible tree by working folder** (e.g. `~ › projects › demo`):
+- folders nest by path; folders with only one subfolder and no chats of their own merge into one row (`Library/CloudStorage/…`)
+- forks sit under their parent chat
+- filter by title or folder (matching folders open automatically), plus Expand all / Collapse all
+- folder checkboxes select everything inside, with a running "N of M selected" count
+- small lists open fully; large ones (hundreds of Copilot chats) open only the top folders
+- conflict choices (Skip / Overwrite / Fork) stay on each conflicting chat
+
 ## 1.0.0 — major release
 
 1.0 makes the app a home for **all** your agent chats. It brings in your GitHub Copilot and Claude Code history, moves chosen chats between Macs, and adds real cost tracking for Azure.
@@ -22,13 +33,11 @@ Settings → **Sync sessions** → *Import from* has three sources:
 **Export sessions…** asks for a destination folder first, then shows every chat (grouped by folder, with a filter) all checked. Uncheck the ones to leave out, then confirm. The export holds only the chats you picked.
 
 ### Improved: session picker
-Export and all three import sources share one picker, shown as a **collapsible tree by working folder** (e.g. `~ › projects › demo`):
-- folders nest by path; single-child chains collapse into one row (`Library/CloudStorage/…`)
-- forks sit under their parent chat
-- a title/folder filter (matching folders open automatically) and Expand all / Collapse all
-- tri-state folder checkboxes and select-all for what is shown
+Export and all three import sources share one picker:
+- a title/folder filter
+- select-all for what is shown
+- per-folder checkboxes
 - a running "N selected" count
-- small lists open fully; large ones (hundreds of Copilot chats) open only the top folders
 
 ### Azure
 - **Responses API fallback:** deployments that refuse tools on `chat/completions` (newer reasoning and codex models) are retried on the Responses API automatically and remembered per deployment.

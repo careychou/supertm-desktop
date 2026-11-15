@@ -25,6 +25,8 @@ Grab the latest build from **[Releases](https://github.com/careychou/supertm-des
 
 On first launch open **⚙ Settings → Model providers**, add a provider (Google Vertex AI, Azure OpenAI or a custom endpoint), press **Test**, then **Save**. Step-by-step setup for each kind: [doc/provider-setup.md](doc/provider-setup.md).
 
+New here? The illustrated **[tutorial](doc/tutorial.md)** walks through every screen with screenshots.
+
 ## Main features
 
 ### Agent
