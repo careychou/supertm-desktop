@@ -1,5 +1,18 @@
 # Release notes
 
+## 1.1.0
+
+### New: folder memory
+Give **every chat in a working folder** the same standing context: facts, preferences, decisions, reference docs.
+- Right-click a working folder in the sidebar (or use its **⋯** button) → **Add folder memory…**
+- Write free-text **notes** and/or attach `.md` / `.txt` files
+- Applies to new **and existing** chats in that folder, read at the start of every turn; edits take effect on the next message
+- A 🗂 icon marks folders with memory; a green **🗂 Folder memory** chip in the composer opens it for editing
+- Folder memory travels with export / import and never overwrites folder memory you already have
+
+### Improved: session memory takes notes too
+**＋ Memory** now opens an editor with free-text **notes** plus attached files (previously files only). When folder and session memory disagree, session memory wins. Chats with older file-only memory keep working unchanged.
+
 ## 1.0.1
 
 ### Improved: session picker is a folder tree
