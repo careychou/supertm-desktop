@@ -41,7 +41,7 @@ It reads skills and agents from the same places Copilot does — `<folder>/.gith
 - **Your models**: Google Vertex AI (Gemini, Claude, Model Garden), Azure OpenAI or AI Foundry, or any OpenAI-compatible endpoint.
 - **Chats organized by working folder**, with forks, bookmarks and drag & drop.
 - **Attachments**: images and documents, compressed automatically.
-- **Memory compaction**, shareable exports, and attaching exports as memory.
+- **Memory compaction**, shareable exports, and **session + folder memory** (notes and files shared by one chat or every chat in a folder).
 - **AI usage and cost** for this app, your GCP project, or your Azure resource.
 - **Sync sessions** between Macs, and import chats from GitHub Copilot or Claude Code.
 

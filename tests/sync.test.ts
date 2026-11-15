@@ -77,4 +77,16 @@ describe('ageDiff', () => {
     expect(ageDiff(125 * 60_000, 0)).toBe('2 h 5 min newer')
     expect(ageDiff(0, 3 * 86_400_000)).toBe('3 days older')
   })
+
+  it('brings folder memory along with imported chats unless the folder already has some', () => {
+    laptop.setFolderMemory('/w', JSON.stringify({ files: [], notes: 'fiscal weeks start Sunday' }))
+    laptop.setFolderMemory('/x', JSON.stringify({ files: [], notes: 'other' }))
+    laptop.createSession(row('d', 4_000, { cwd: '/x' }))
+    exportSessions(laptop, path.join(tmp, 'share2'), 'Test')
+    const f2 = resolveSyncFile(path.join(tmp, 'share2'))
+    desktop.setFolderMemory('/x', JSON.stringify({ files: [], notes: 'mine' }))
+    importSessions(desktop, f2, [{ id: 'a' }, { id: 'd' }])
+    expect(JSON.parse(desktop.getFolder('/w')!.memory!).notes).toBe('fiscal weeks start Sunday')
+    expect(JSON.parse(desktop.getFolder('/x')!.memory!).notes).toBe('mine')
+  })
 })

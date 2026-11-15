@@ -81,14 +81,29 @@ describe('Session main loop', () => {
   it('loads attached memory exports into the system prompt and can swap them', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mem-'))
     fs.writeFileSync(`${dir}/a.md`, 'MEMORY_A_FACT'); fs.writeFileSync(`${dir}/b.md`, 'MEMORY_B_FACT')
-    const { s, adapter } = mk(() => say('ok'), { memories: [`${dir}/a.md`] })
+    const { s, adapter } = mk(() => say('ok'), { memory: { files: [`${dir}/a.md`], notes: '' } })
     await s.send('go')
     expect(adapter.calls[0].messages[0].content).toContain('MEMORY_A_FACT')
-    s.setMemories([`${dir}/b.md`])
+    s.setMemory('session', { files: [`${dir}/b.md`], notes: '' })
     await s.send('again')
     const sys = adapter.calls[1].messages[0].content as string
     expect(sys).toContain('MEMORY_B_FACT')
     expect(sys).not.toContain('MEMORY_A_FACT')
+  })
+
+  it('adds folder memory and session notes, folder first, and updates them live', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mem-'))
+    fs.writeFileSync(`${dir}/f.md`, 'FOLDER_FILE_FACT')
+    const { s, adapter } = mk(() => say('ok'), { memory: { files: [], notes: 'SESSION_NOTE' }, folderMemory: { files: [`${dir}/f.md`], notes: 'FOLDER_NOTE' } })
+    await s.send('go')
+    const sys = adapter.calls[0].messages[0].content as string
+    for (const t of ['# Folder memory', 'FOLDER_NOTE', 'FOLDER_FILE_FACT', '# Session memory', 'SESSION_NOTE']) expect(sys).toContain(t)
+    expect(sys.indexOf('# Folder memory')).toBeLessThan(sys.indexOf('# Session memory'))
+    s.setMemory('folder', { files: [], notes: '' })
+    await s.send('again')
+    const sys2 = adapter.calls[1].messages[0].content as string
+    expect(sys2).not.toContain('# Folder memory')
+    expect(sys2).toContain('SESSION_NOTE')
   })
 
   it('emits reasoning events unless reasoning is off', async () => {

@@ -76,6 +76,7 @@ export function scanSessions(store: Store, file: string): { manifest: SyncManife
 /**
  * Imports the chosen sessions. New UUIDs are added as-is. For a UUID that already exists locally the choice decides:
  * `overwrite` replaces the local chat, `fork` adds it with a new UUID filed under the local chat, `skip` leaves both alone.
+ * Folder memory for an imported chat's folder is copied too when this Mac has none for that folder.
  */
 export function importSessions(store: Store, file: string, picks: Array<{ id: string; choice?: SyncChoice }>, stateDirOf?: (id: string) => string): SyncImportResult {
   const db = openSource(file)
@@ -85,6 +86,8 @@ export function importSessions(store: Store, file: string, picks: Array<{ id: st
     const msgs = db.prepare('SELECT content_json FROM messages WHERE session_id = ? ORDER BY seq')
     const items = db.prepare('SELECT item_json FROM ui_items WHERE session_id = ? ORDER BY id')
     const chosen = new Set(picks.map((p) => p.id))
+    const hasFolderMem = (db.prepare('PRAGMA table_info(folders)').all() as any[]).some((c) => c.name === 'memory')
+    const folderMem = hasFolderMem ? db.prepare('SELECT memory FROM folders WHERE path = ?') : null
     for (const { id, choice } of picks) {
       const src = get.get(id) as unknown as SessionRow | undefined
       if (!src) { res.skipped++; continue }
@@ -100,6 +103,9 @@ export function importSessions(store: Store, file: string, picks: Array<{ id: st
         if (local) { row.sort_order = local.sort_order ?? null; if (stateDirOf) fs.rmSync(stateDirOf(id), { recursive: true, force: true }) }
       }
       store.putSession(row)
+      // folder memory travels with its chats, but never replaces memory already set on this Mac
+      const fm = (folderMem?.get(row.cwd) as { memory?: string | null } | undefined)?.memory
+      if (fm && !store.getFolder(row.cwd)?.memory) store.setFolderMemory(row.cwd, fm)
       store.saveMessages(row.id, (msgs.all(id) as any[]).map((r) => JSON.parse(r.content_json) as Message))
       store.saveUiItems(row.id, (items.all(id) as any[]).map((r) => JSON.parse(r.item_json)))
       res.ids.push(row.id)

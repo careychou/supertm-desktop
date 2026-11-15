@@ -425,3 +425,19 @@ button.danger { color: var(--fail); }
 .tree-when { flex: none; width: 150px; text-align: right; }
 .tree-session.conflict { background: #fff8e6; }
 .tree-extra { margin-top: 4px; }
+
+/* Memory (session + folder) */
+.modal.memory .mem-label { display: block; font-weight: 600; font-size: 13px; margin: 14px 0 6px; }
+.modal.memory .mem-notes { width: 100%; box-sizing: border-box; font: inherit; font-size: 13.5px; padding: 8px 10px; border: 1px solid #d0d7de; border-radius: 8px; resize: vertical; min-height: 120px; }
+.modal.memory .mem-files { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; margin-bottom: 16px; }
+.modal.memory .mem-file { display: flex; align-items: center; gap: 8px; width: 100%; font-size: 13px; }
+.modal.memory .mem-file .path { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.modal.memory .mem-file button { padding: 0 7px; }
+.modal.memory .actions { align-items: center; }
+.mem-chip.fmem { background: #eaf5ec; color: #23613a; }
+.mem-chip.fmem button { color: #4d7a5c; }
+.mem-chip.fmem button:hover, .mem-chip.fmem:hover { background: #d6eadb; }
+.mem-chip.clickable { cursor: pointer; padding-right: 8px; }
+.mem-chip.clickable:hover { background: #d3dcef; }
+.folder-mem { font-size: 12px; margin-left: 4px; opacity: .85; border: 0; background: none; padding: 0 2px; border-radius: 4px; }
+.folder-mem:hover { background: #dfe2e6; opacity: 1; }

@@ -8,6 +8,7 @@ import { selectTools } from './tools'
 import { ShellManager } from './tools/shell'
 import { closeSessionDb } from './tools/sql'
 import { buildMainSystem } from './prompt'
+import type { Memory } from '../shared/memory'
 import { applyCompaction, clusterTurns, estimateTokens, planTurns, priorSummary, splitHistoryTurns, summarizeTurns, type CompactPlan } from './compact'
 
 export interface SessionOptions {
@@ -21,8 +22,10 @@ export interface SessionOptions {
   maxTurnsSub?: number
   autoApprove?: boolean
   reasoning?: 'off' | 'low' | 'medium' | 'high'
-  /** Paths of exported sessions to load as prior memory. */
-  memories?: string[]
+  /** This chat's memory: notes plus files (usually shared chat exports). */
+  memory?: Memory
+  /** Memory shared by every chat in the working folder. */
+  folderMemory?: Memory
   /** Per-chat folder for scratch state (sql tool database). */
   stateDir?: string
   /** Prior conversation (without system message) to resume. */
@@ -52,7 +55,7 @@ export class Session {
       maxConcurrency: o.maxConcurrency ?? 4, maxTurnsSub: o.maxTurnsSub ?? 30, autoApprove: o.autoApprove, reasoning: o.reasoning ?? 'medium',
       shells: this.shells, stateDir: o.stateDir
     })
-    this.messages = [{ role: 'system', content: buildMainSystem(this.registry, o.cwd, o.memories) }, ...(o.history ?? [])]
+    this.messages = [{ role: 'system', content: buildMainSystem(this.registry, o.cwd, o.memory, o.folderMemory) }, ...(o.history ?? [])]
     this.manager.onBackgroundDone = (parentId) => {
       if (parentId === MAIN_ID && !this.busy) this.onIdleNotification?.()
     }
@@ -69,8 +72,11 @@ export class Session {
   setMode(mode: 'interactive' | 'autopilot') { this.manager.gate.setAutoApprove(mode === 'autopilot') }
   /** Stops background shells and closes the scratch database. */
   dispose() { this.shells.dispose(); if (this.o.stateDir) closeSessionDb(this.o.stateDir) }
-  /** Replaces attached memories; takes effect on the next model call. */
-  setMemories(paths: string[]) { this.o.memories = paths; this.messages[0] = { role: 'system', content: buildMainSystem(this.registry, this.o.cwd, paths) } }
+  /** Replaces the chat's or the folder's memory; takes effect on the next model call. */
+  setMemory(kind: 'session' | 'folder', m: Memory) {
+    if (kind === 'session') this.o.memory = m; else this.o.folderMemory = m
+    this.messages[0] = { role: 'system', content: buildMainSystem(this.registry, this.o.cwd, this.o.memory, this.o.folderMemory) }
+  }
 
   /** Prompts waiting to be added to the conversation. */
   get queued() { return this.queue.map((q) => q.qid) }

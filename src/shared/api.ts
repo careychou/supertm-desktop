@@ -1,6 +1,7 @@
 import type { UsageReport } from './usage'
 import type { AgentEvent, PermissionDecision, PermissionKind } from '../engine/types'
 import type { SessionRow, FolderRow, BookmarkRow } from '../main/store'
+import type { Memory } from './memory'
 import type { ExternalSource, SyncCandidate, SyncChoice, SyncImportResult, SyncManifest } from './sync'
 import type { Settings } from '../main/settings'
 import type { ModelGroup, ProviderEntry } from './providers'
@@ -10,6 +11,7 @@ import type { AttachMeta } from './attach'
 export type { Attachment, AttachMeta }
 export interface AttachInput { path?: string; name?: string; data?: Uint8Array }
 export interface PreparedAttachment { id: string; att?: Attachment; meta: AttachMeta; error?: string }
+export type { Memory }
 export type { AgentEvent, SessionRow, FolderRow, BookmarkRow, Settings, PermissionDecision, ModelGroup, ProviderEntry }
 export interface Listing { sessions: SessionRow[]; folders: FolderRow[]; bookmarks: BookmarkRow[] }
 export interface CompactItem { t: 'compact'; auto: boolean; model?: string; summarized: number; dropped: number; before: number; after: number; summary: string; keptTurns?: number[]; summarizedTurns?: number[]; droppedTurns?: number[] }
@@ -44,10 +46,13 @@ export interface DeskApi {
   removeBookmark(id: string): Promise<void>
   analyzeTurns(id: string): Promise<TurnAnalysis>
   compact(id: string, plan: { keep: number[]; summarize: number[] }): Promise<{ before: number; after: number; summarized: number; dropped: number }>
-  createSession(opts: { cwd: string; model: string; reasoning?: Settings['reasoning']; mode?: Settings['defaultMode']; memories?: string[] }): Promise<SessionRow>
+  createSession(opts: { cwd: string; model: string; reasoning?: Settings['reasoning']; mode?: Settings['defaultMode']; memory?: Memory }): Promise<SessionRow>
   setReasoning(sessionId: string, r: Settings['reasoning']): Promise<void>
   setMode(sessionId: string, m: Settings['defaultMode']): Promise<void>
-  setMemories(sessionId: string, paths: string[]): Promise<void>
+  /** This chat's memory (notes + files). */
+  setMemory(sessionId: string, memory: Memory): Promise<void>
+  /** Memory shared by every chat in a working folder. */
+  setFolderMemory(cwd: string, memory: Memory): Promise<void>
   pickMemories(): Promise<string[]>
   saveExport(name: string, markdown: string): Promise<string | null>
   copyText(text: string): Promise<void>

@@ -4,6 +4,7 @@ import type { BookmarkRow, FolderRow, SessionRow } from '../../../shared/api'
 import { buildTree, isWithin, type TreeNode } from '../../../shared/fork'
 import { Menu, at, type MenuEntry, type MenuState } from './Menu'
 import { BRAND } from '../../../shared/brand'
+import { hasMemory, parseMemory } from '../../../shared/memory'
 
 interface Props {
   folders: FolderRow[]
@@ -16,6 +17,7 @@ interface Props {
   onDelete(s: SessionRow): void
   onAddFolder(): void
   onRemoveFolder(path: string): void
+  onFolderMemory(path: string): void
   onCollapse(): void
   onSettings(): void
   onUsage(): void
@@ -218,13 +220,21 @@ function BookmarkNode({ b, depth, c }: { b: BookmarkRow; depth: number; c: Ctx }
 function FolderGroup({ folder, sessions, c }: { folder: FolderRow; sessions: SessionRow[]; c: Ctx }) {
   const [open, setOpen] = useState(true)
   const tree = buildTree(sessions)
+  const hasMem = hasMemory(parseMemory(folder.memory))
+  const menu = (e: React.MouseEvent) => c.setMenu(at(e, [
+    { label: '✎ New chat', onClick: () => c.onNewChat(folder.path) },
+    { label: hasMem ? '🗂 Edit folder memory…' : '🗂 Add folder memory…', onClick: () => c.onFolderMemory(folder.path) },
+    'sep',
+    { label: '× Remove folder', danger: true, onClick: () => c.onRemoveFolder(folder.path) }
+  ]))
   return (
     <div className="folder-group">
-      <div className="folder-row" onClick={() => setOpen(!open)} title={folder.path}>
+      <div className="folder-row" onClick={() => setOpen(!open)} onContextMenu={menu} title={folder.path}>
         <span className="folder-icon">{open ? '📂' : '📁'}</span>
         <span className="title">{base(folder.path)}</span>
+        {hasMem && <button className="folder-mem" title="Folder memory: shared by every chat in this folder. Click to edit." onClick={(e) => { e.stopPropagation(); c.onFolderMemory(folder.path) }}>🗂</button>}
         <button className="folder-act" title="New chat in this folder" onClick={(e) => { e.stopPropagation(); c.onNewChat(folder.path) }}>＋</button>
-        <button className="folder-act" title="Remove folder from list" onClick={(e) => { e.stopPropagation(); c.onRemoveFolder(folder.path) }}>×</button>
+        <button className="folder-act" title="More actions: folder memory, remove" onClick={menu}>⋯</button>
       </div>
       {open && (tree.length
         ? tree.map((n) => <SessionNode key={n.row.id} node={n} depth={0} c={c} />)

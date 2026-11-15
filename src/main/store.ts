@@ -7,7 +7,7 @@ import { isWithin, reorderIds } from '../shared/fork'
 
 export interface UsageRec { ts: number; session_id: string; agent_id: string; model: string; prompt: number; cached: number; cache_write: number; completion: number }
 export interface SessionRow { id: string; title: string; cwd: string; model: string; created_at: number; updated_at: number; parent_id: string | null; fork_turn: number | null; reasoning?: string | null; mode?: string | null; memories?: string | null; sort_order?: number | null; compact_offset?: number | null; turn_map?: string | null }
-export interface FolderRow { path: string; added_at: number }
+export interface FolderRow { path: string; added_at: number; memory?: string | null }
 /** A bookmark folder (id) or a pinned session (session_id), nested via parent_id (null = top of Bookmarks). */
 export interface BookmarkRow { id: string; kind: 'folder' | 'pin'; name: string | null; session_id: string | null; parent_id: string | null; sort_order: number; collapsed: number }
 
@@ -37,6 +37,7 @@ export class Store {
     this.db.exec('CREATE TABLE IF NOT EXISTS usage (ts INTEGER, session_id TEXT, agent_id TEXT, model TEXT, prompt INTEGER, cached INTEGER, cache_write INTEGER, completion INTEGER); CREATE INDEX IF NOT EXISTS usage_ts ON usage(ts)')
     if (!cols.includes('mode')) this.db.exec('ALTER TABLE sessions ADD COLUMN mode TEXT')
     if (!cols.includes('memories')) this.db.exec('ALTER TABLE sessions ADD COLUMN memories TEXT')
+    if (!(this.db.prepare('PRAGMA table_info(folders)').all() as any[]).some((c) => c.name === 'memory')) this.db.exec('ALTER TABLE folders ADD COLUMN memory TEXT')
     this.db.exec('INSERT OR IGNORE INTO folders (path, added_at) SELECT DISTINCT cwd, MIN(created_at) FROM sessions GROUP BY cwd')
   }
 
@@ -45,6 +46,14 @@ export class Store {
   }
   addFolder(p: string) {
     this.db.prepare('INSERT OR IGNORE INTO folders (path, added_at) VALUES (?, ?)').run(p, Date.now())
+  }
+  getFolder(p: string): FolderRow | undefined {
+    return this.db.prepare('SELECT * FROM folders WHERE path = ?').get(p) as unknown as FolderRow | undefined
+  }
+  /** Folder memory (JSON, see shared/memory); null clears it. */
+  setFolderMemory(p: string, memory: string | null) {
+    this.addFolder(p)
+    this.db.prepare('UPDATE folders SET memory = ? WHERE path = ?').run(memory, p)
   }
   removeFolder(p: string) {
     for (const s of this.listSessions().filter((x) => x.cwd === p)) this.deleteSession(s.id)

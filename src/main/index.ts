@@ -13,6 +13,7 @@ import { loadRegistry } from '../engine/registry/registry'
 import type { Message, PermissionDecision } from '../engine/types'
 import type { CompactItem, PushEvent } from '../shared/api'
 import { BRAND } from '../shared/brand'
+import { parseMemory, serializeMemory, type Memory } from '../shared/memory'
 import { insertBeforeTurn, liveTurnMap, orderRows, reorderIds, sliceItemsAtTurn, sliceMessagesAtTurn } from '../shared/fork'
 import { prepareAttachment, type AttachInput } from './attachments'
 import type { Attachment } from '../engine/content'
@@ -40,7 +41,7 @@ const effortOf = (row: { reasoning?: string | null }): Effort => (row.reasoning 
 type Mode = Settings['defaultMode']
 const modeOf = (row: { mode?: string | null }): Mode => (row.mode as Mode) || settings.defaultMode
 const stateDirOf = (id: string) => path.join(dataHome, 'sessions', id)
-const memoriesOf = (row: { memories?: string | null }): string[] => { try { return JSON.parse(row.memories || '[]') } catch { return [] } }
+const folderMemoryOf = (cwd: string) => parseMemory(store.getFolder(cwd)?.memory)
 const sharesDir = () => path.join(app.getPath('documents'), BRAND.name, 'shares')
 const budget = () => ({ maxBytes: settings.requestMaxMB * 1024 * 1024, imageTurns: settings.imageTurns })
 const router = (providers: ProviderEntry[] = settings.providers) => new ProviderRouter(providers, budget)
@@ -58,7 +59,7 @@ function getLive(id: string): Session {
   if (!row) throw new Error(`no session ${id}`)
   s = new Session({
     adapter: adapter(), cwd: row.cwd, model: row.model, history: store.loadMessages(id),
-    maxConcurrency: settings.maxConcurrency, maxTurnsMain: settings.maxTurnsMain, maxTurnsSub: settings.maxTurnsSub, reasoning: effortOf(row), memories: memoriesOf(row),
+    maxConcurrency: settings.maxConcurrency, maxTurnsMain: settings.maxTurnsMain, maxTurnsSub: settings.maxTurnsSub, reasoning: effortOf(row), memory: parseMemory(row.memories), folderMemory: folderMemoryOf(row.cwd),
     autoApprove: modeOf(row) === 'autopilot', stateDir: stateDirOf(id), compactModel: () => settings.compactModel,
     hooks: {
       onEvent: (event) => {
@@ -173,10 +174,10 @@ function registerIpc() {
     const l = live.get(id)
     return { session, items: store.loadUiItems(id), busy: l?.isBusy ?? false, tokens: l ? l.tokenEstimate : estimateTokens(store.loadMessages(id)) }
   })
-  ipcMain.handle('createSession', (_e, o: { cwd: string; model: string; reasoning?: Effort; mode?: Mode; memories?: string[] }) => {
+  ipcMain.handle('createSession', (_e, o: { cwd: string; model: string; reasoning?: Effort; mode?: Mode; memory?: Memory }) => {
     const now = Date.now()
     const row = { id: randomUUID(), title: 'New chat', cwd: o.cwd, model: o.model, created_at: now, updated_at: now, parent_id: null, fork_turn: null,
-      reasoning: o.reasoning ?? null, mode: o.mode ?? null, memories: o.memories?.length ? JSON.stringify(o.memories) : null }
+      reasoning: o.reasoning ?? null, mode: o.mode ?? null, memories: o.memory ? serializeMemory(o.memory) : null }
     store.createSession(row)
     settings.defaultCwd = o.cwd; settings.defaultModel = o.model; saveSettings(settings)
     return row
@@ -236,12 +237,18 @@ function registerIpc() {
     if (m === 'autopilot') for (const [rid, p] of pending) if (p.sid === id && p.kind === 'permission') { pending.delete(rid); p.resolve('allow') }
   })
   ipcMain.handle('setReasoning', (_e, id: string, r: Effort) => { store.updateSession(id, { reasoning: r }); live.get(id)?.setReasoning(r) })
-  ipcMain.handle('setMemories', (_e, id: string, paths: string[]) => {
-    store.updateSession(id, { memories: paths.length ? JSON.stringify(paths) : null }); live.get(id)?.setMemories(paths); pushSessions()
+  ipcMain.handle('setMemory', (_e, id: string, m: Memory) => {
+    store.updateSession(id, { memories: serializeMemory(m) }); live.get(id)?.setMemory('session', parseMemory(serializeMemory(m))); pushSessions()
+  })
+  ipcMain.handle('setFolderMemory', (_e, cwd: string, m: Memory) => {
+    store.setFolderMemory(cwd, serializeMemory(m))
+    const fm = folderMemoryOf(cwd)
+    for (const [id, l] of live) if (store.getSession(id)?.cwd === cwd) l.setMemory('folder', fm)
+    pushSessions()
   })
   ipcMain.handle('pickMemories', async () => {
     fs.mkdirSync(sharesDir(), { recursive: true })
-    const r = await dialog.showOpenDialog(win!, { defaultPath: sharesDir(), properties: ['openFile', 'multiSelections'], filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }], message: 'Attach shared session exports as memory' })
+    const r = await dialog.showOpenDialog(win!, { defaultPath: sharesDir(), properties: ['openFile', 'multiSelections'], filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }], message: 'Attach files as memory (usually shared chat exports)' })
     return r.canceled ? [] : r.filePaths
   })
   ipcMain.handle('saveExport', async (_e, name: string, md: string) => {

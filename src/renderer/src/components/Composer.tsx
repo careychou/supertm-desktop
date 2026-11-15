@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { hasMemory, type Memory } from '../../../shared/memory'
 import type { AttachInput, ModelGroup, PreparedAttachment } from '../../../shared/api'
 import { bareModel } from '../../../shared/providers'
 
@@ -22,9 +23,9 @@ interface Props {
   onEffort(e: Effort): void
   mode: Mode
   onMode(m: Mode): void
-  memories: string[]
-  onAddMemory(): void
-  onRemoveMemory(path: string): void
+  memory: Memory
+  folderMemory: Memory
+  onEditMemory(kind: 'session' | 'folder'): void
   onShare?: () => void
   tokens?: number
   onCompact?: () => void
@@ -34,6 +35,8 @@ export type Mode = 'interactive' | 'autopilot'
 export type Effort = 'off' | 'low' | 'medium' | 'high'
 const EFFORTS: Array<[Effort, string]> = [['off', 'Thinking off'], ['low', 'Low effort'], ['medium', 'Medium effort'], ['high', 'High effort']]
 const fileName = (p: string) => p.split('/').pop() ?? p
+const memLabel = (m: Memory) => [m.notes.trim() && 'Notes', m.files.length === 1 ? fileName(m.files[0]) : m.files.length > 1 && `${m.files.length} files`].filter(Boolean).join(' · ')
+const memSummary = (m: Memory) => [m.notes.trim() && `Notes: ${m.notes.trim().slice(0, 120)}${m.notes.trim().length > 120 ? '…' : ''}`, ...m.files.map((f) => `📄 ${fileName(f)}`)].filter(Boolean).join('\n')
 
 const short = (m: string) => bareModel(m).split('/').pop() ?? m
 const folderName = (p: string) => p.split('/').filter(Boolean).pop() ?? p
@@ -148,10 +151,12 @@ export function Composer(p: Props) {
         <select className="effort-pick" value={p.effort} onChange={(e) => p.onEffort(e.target.value as Effort)} title="Reasoning effort / model thinking for this chat">
           {EFFORTS.map(([v, l]) => <option key={v} value={v}>💭 {l}</option>)}
         </select>
-        {p.memories.map((m) => (
-          <span key={m} className="mem-chip" title={`Memory: ${m}`}>🧠 {fileName(m)}<button onClick={() => p.onRemoveMemory(m)} title="Detach">×</button></span>
-        ))}
-        <button className="fbtn" onClick={p.onAddMemory} title="Attach a shared session export as prior memory">＋ Memory</button>
+        {hasMemory(p.folderMemory) && (
+          <button className="mem-chip fmem clickable" onClick={() => p.onEditMemory('folder')} title={`Folder memory for ${folderName(p.cwd)}: shared by every chat in this folder. Click to edit.\n${memSummary(p.folderMemory)}`}>🗂 Folder memory</button>
+        )}
+        {hasMemory(p.memory)
+          ? <button className="mem-chip clickable" onClick={() => p.onEditMemory('session')} title={`Session memory: only this chat. Click to edit.\n${memSummary(p.memory)}`}>🧠 {memLabel(p.memory)}</button>
+          : <button className="fbtn" onClick={() => p.onEditMemory('session')} title="Add notes or files (e.g. shared chat exports) as memory for this chat">＋ Memory</button>}
         <div className="spacer" />
         {p.onCompact && <button className="fbtn" onClick={p.onCompact} title="Context size (estimated). Click to compact history: choose which turns to summarize.">⇲ {p.tokens ? `${Math.round(p.tokens / 1000)}k` : ''} Compact</button>}
         {p.onShare && <button className="fbtn" onClick={p.onShare} title="Export this chat to Markdown">⇪ Share</button>}

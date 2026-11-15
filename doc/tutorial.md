@@ -142,13 +142,23 @@ Type in the box at the bottom and press **Enter** (**Shift+Enter** adds a new li
 | **Folder** (e.g. `demo-app`) | The working folder the agent runs in |
 | **✋ Interactive / 🚀 Autopilot** | Interactive asks before running tools that change things. Autopilot runs them without asking. |
 | **💭 Effort** | How much the model thinks before it answers (off, low, medium, high) |
-| **＋ Memory** | Attach a shared chat export as prior memory |
+| **＋ Memory** | Session memory for this chat only: free-text notes and/or attached `.md` files (e.g. a shared chat export) |
+| **🗂 Folder memory** | Shows when the working folder has folder memory. Click it to edit (see below). |
 | **⇲ Compact** | Shows the estimated context size. Click it to compact the history (see §5). |
 | **⇪ Share** | Export this chat to Markdown |
 
 - **Thought** blocks show the model's reasoning. Click one to expand it.
 - Tool calls and sub-agents show inline while they run. You can keep typing; new prompts queue up behind the current turn.
 - Hover over a turn to **fork** a new chat from that point. The fork is filed under the original chat.
+
+### Folder memory: notes every chat in a folder shares
+
+![Folder memory](images/tutorial/03d-folder-memory.png)
+
+Right-click a working folder in the sidebar (or use its **⋯** button) and choose **Add folder memory…**. Write notes such as standing facts, preferences and decisions, and/or attach `.md` files. Every chat in that folder, new and existing, reads it at the start of each turn. A 🗂 icon marks folders that have memory.
+
+- **Folder memory** is for the whole project. **Session memory** (＋ Memory) is for one chat. When both say different things, session memory wins.
+- Folder memory is exported and imported with your chats. An import never overwrites folder memory you already have.
 
 ## 4. Skills and agents per folder
 

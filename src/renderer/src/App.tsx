@@ -4,6 +4,8 @@ import { insertBeforeTurn } from '../../shared/fork'
 import { applyEvent, runningBackground, settle, type Item } from './state'
 import { ItemList } from './components/Cards'
 import { Composer, type Effort, type Mode } from './components/Composer'
+import { MemoryModal } from './components/MemoryModal'
+import { emptyMemory, parseMemory, serializeMemory, type Memory } from '../../shared/memory'
 import { ShareModal } from './components/ShareModal'
 import { CompactModal } from './components/CompactModal'
 import { AskCard, PermissionCard, type AskReq, type PermissionReq } from './components/Prompts'
@@ -44,7 +46,8 @@ export function App() {
   const [draftEffort, setDraftEffort] = useState<Effort | null>(null)
   const [defaultMode, setDefaultMode] = useState<Mode>('autopilot')
   const [draftMode, setDraftMode] = useState<Mode | null>(null)
-  const [draftMem, setDraftMem] = useState<string[]>([])
+  const [draftMem, setDraftMem] = useState<Memory>(emptyMemory())
+  const [memEdit, setMemEdit] = useState<{ kind: 'session' | 'folder'; cwd: string } | null>(null)
   const [sharing, setSharing] = useState<SessionRow | null>(null)
   const [reg, setReg] = useState<RegistryInfo | null>(null)
   const [folderMenu, setFolderMenu] = useState(false)
@@ -161,13 +164,13 @@ export function App() {
   const newChat = async (folder: string) => {
     await persistCurrent()
     if (folder) setDraftCwd(folder)
-    setCurrent(null); setItems([]); setBusy(false); setPerms([]); setAsks([]); setFolderMenu(false); setDraftEffort(null); setDraftMode(null); setDraftMem([]); setTokens(0)
+    setCurrent(null); setItems([]); setBusy(false); setPerms([]); setAsks([]); setFolderMenu(false); setDraftEffort(null); setDraftMode(null); setDraftMem(emptyMemory()); setTokens(0)
   }
 
   const send = async (text: string, atts: PreparedAttachment[] = []) => {
     let s = current
     if (!s) {
-      s = await window.desk.createSession({ cwd: draftCwd, model: draftModel, reasoning: draftEffort ?? undefined, mode: draftMode ?? undefined, memories: draftMem })
+      s = await window.desk.createSession({ cwd: draftCwd, model: draftModel, reasoning: draftEffort ?? undefined, mode: draftMode ?? undefined, memory: draftMem })
       setCurrent(s); currentRef.current = s
     }
     stick.current = true
@@ -217,13 +220,12 @@ export function App() {
     if (current) { await window.desk.setMode(current.id, m); setCurrent({ ...current, mode: m }); if (m === 'autopilot') setPerms([]) }
     else setDraftMode(m)
   }
-  const memories: string[] = current ? JSON.parse(current.memories || '[]') : draftMem
-  const setMemories = async (paths: string[]) => {
-    const uniq = [...new Set(paths)]
-    if (current) { await window.desk.setMemories(current.id, uniq); setCurrent({ ...current, memories: uniq.length ? JSON.stringify(uniq) : null }) }
-    else setDraftMem(uniq)
+  const memory: Memory = current ? parseMemory(current.memories) : draftMem
+  const setMemory = async (m: Memory) => {
+    if (current) { await window.desk.setMemory(current.id, m); setCurrent({ ...current, memories: serializeMemory(m) }) }
+    else setDraftMem(m)
   }
-  const addMemory = async () => { const p = await window.desk.pickMemories(); if (p.length) await setMemories([...memories, ...p]) }
+  const folderMemoryOf = (p: string) => parseMemory(folders.find((f) => f.path === p)?.memory)
 
   const openCompact = async (s: SessionRow) => {
     if (busyIds.has(s.id)) { flash('Wait for this chat to finish before compacting.'); return }
@@ -260,7 +262,7 @@ export function App() {
   const composer = (
     <Composer busy={busy} restore={restore} model={model} models={models} groups={modelGroups} cwd={cwd} onModel={setModel}
       onPickFolder={current ? undefined : () => setFolderMenu(!folderMenu)} onSend={send} onStop={() => current && window.desk.stop(current.id)} autoFocus
-      effort={effort} onEffort={setEffort} mode={mode} onMode={setMode} memories={memories} onAddMemory={addMemory} onRemoveMemory={(m) => setMemories(memories.filter((x) => x !== m))}
+      effort={effort} onEffort={setEffort} mode={mode} onMode={setMode} memory={memory} folderMemory={cwd ? folderMemoryOf(cwd) : emptyMemory()} onEditMemory={(kind) => setMemEdit({ kind, cwd })}
       onShare={current && !busy ? async () => { await persistCurrent(); setSharing(current) } : undefined}
       tokens={current ? tokens : 0} onCompact={current && !busy ? () => openCompact(current) : undefined} />
   )
@@ -269,7 +271,7 @@ export function App() {
     <div className={`app ${sidebar ? '' : 'nosidebar'}${resizing ? ' resizing' : ''}`} style={{ gridTemplateColumns: `${sidebar ? sideW : 0}px minmax(0, 1fr)` }}>
       <div className="side-slot" aria-hidden={!sidebar} inert={!sidebar || undefined}>
         <Sidebar folders={folders} sessions={sessions} bookmarks={bookmarks} onCompact={openCompact} currentId={current?.id ?? null} busyIds={busyIds}
-          onOpen={open} onNewChat={newChat} onDelete={del} onAddFolder={addFolder} onRemoveFolder={removeFolder}
+          onOpen={open} onNewChat={newChat} onDelete={del} onAddFolder={addFolder} onRemoveFolder={removeFolder} onFolderMemory={(p) => setMemEdit({ kind: 'folder', cwd: p })}
           onCollapse={() => setSidebar(false)} onSettings={() => setShowSettings(true)} onUsage={() => setShowUsage(true)} usage={usage}
           onShare={async (s) => { await persistCurrent(); setSharing(s) }} />
       </div>
@@ -352,6 +354,9 @@ export function App() {
         onDone={(m) => { setCompacting(null); flash(m) }} />}
       {toast && <div className="toast">{toast}</div>}
       {sharing && <ShareModal session={sharing} onClose={() => setSharing(null)} />}
+      {memEdit && (memEdit.kind === 'folder'
+        ? <MemoryModal kind="folder" target={memEdit.cwd} memory={folderMemoryOf(memEdit.cwd)} onSave={(m) => void window.desk.setFolderMemory(memEdit.cwd, m)} onClose={() => setMemEdit(null)} />
+        : <MemoryModal kind="session" target={current?.title ?? 'New chat'} memory={memory} onSave={(m) => void setMemory(m)} onClose={() => setMemEdit(null)} />)}
     </div>
   )
 }

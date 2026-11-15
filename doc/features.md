@@ -35,7 +35,8 @@ Everything SuperTM Desktop does, in detail. New to the app? Start with the [tuto
 
 ## Memory & context
 - **Share a session** — export **all turns or selected turns** to Markdown (optionally with tool calls and thinking), save to a file or copy to clipboard.
-- **Attach exports as memory** — *＋ Memory* attaches one or more exported `.md` files to a chat; the agent starts with them as prior context. Great for handing work between sessions or people.
+- **Session memory** — *＋ Memory* gives one chat free-text notes and/or attached `.md` files (e.g. shared chat exports); the agent reads them as prior context every turn. Great for handing work between sessions or people.
+- **Folder memory** — right-click a working folder → *Add folder memory…* to give **every chat in that folder** (new and existing) shared notes and files: standing facts, preferences, decisions. Session memory takes precedence when the two conflict. Folder memory travels with export/import and never overwrites existing local folder memory.
 - **Smart compaction**: *⇲ Compact* (which also shows the estimated context size) has two modes. **Keep the last N turns** word-for-word and summarize everything before them, or **Choose turns** and set each turn to **Keep · Summarize · Drop**. You can set a turn singly, or set a whole **related-topic cluster** at once (clusters can be non-adjacent when a long chat pivoted and came back). Kept turns can be anywhere in the chat, so an important early instruction stays verbatim. Forks made after a compaction still line up with the right turns. Settings → *Memory compaction* picks a separate (cheaper) **compaction model** and a **cache-aware auto-compact** policy: it waits until the chat has been idle long enough for the provider's prompt cache to expire, unless the chat is very large, and skips small gains (see [doc/memory-compaction.md](memory-compaction.md#91-compaction-and-the-prompt-cache-why-auto-waits)).
 
 ## AI usage
