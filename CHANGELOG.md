@@ -1,5 +1,17 @@
 # Release notes
 
+## 1.2.0
+
+### New: folder plugins from a marketplace
+Install plugins **into one working folder's `.github/`** instead of your global `~/.copilot/`, so each folder loads only the skills and agents it needs.
+- Right-click a working folder (or its **⋯** button) → **⧉ Plugins…**
+- **Marketplaces** tab: add any git URL plus an optional branch (e.g. `https://github.com/github/awesome-copilot`, branch `marketplace`). Copilot and Claude-style marketplaces both work; private repos use your SSH key or git credentials
+- **Browse** tab: search, **Install**, **Remove**. Agents are installed as `*.agent.md`; hooks, MCP servers and commands are reported but not installed
+- The app never overwrites skills you wrote yourself, and **Remove** deletes only the files the plugin added (tracked in `.github/supertm.lock.json`)
+- **Updates**: checked every 6 hours and when you open a chat in the folder. A **⬆** badge on the folder means updates are ready
+- The agent can manage plugins too (`folder_plugins` tool), asking permission before changes
+- The skill count under the composer updates as soon as you close the dialog
+
 ## 1.1.0
 
 ### New: folder memory
