@@ -3,7 +3,7 @@
 A short tour of SuperTM Desktop, from first launch to moving chats between Macs. The screenshots come from a demo setup: one working folder (`demo-app`), two skills, and an OpenAI-compatible test endpoint.
 
 1. [Add a working folder](#1-add-a-working-folder)
-2. [Connect a model provider](#2-connect-a-model-provider)
+2. [Connect a model provider](#2-connect-a-model-provider): [Vertex AI example](#example-a-google-cloud-vertex-ai), [Azure OpenAI example](#example-b-azure-openai-or-azure-ai-foundry)
 3. [Chat with the agent](#3-chat-with-the-agent)
 4. [Skills and agents per folder](#4-skills-and-agents-per-folder)
 5. [Keep long chats small: memory compaction](#5-keep-long-chats-small-memory-compaction)
@@ -32,7 +32,102 @@ A short tour of SuperTM Desktop, from first launch to moving chats between Macs.
 
 You can add more than one provider. The **primary** provider's models show by plain name; other providers' models show as `provider::model`. Use **Make primary** to switch. Existing chats keep the provider they started on. Keys are encrypted with the macOS keychain and stay on this Mac.
 
-Each provider kind is covered step by step in [provider-setup.md](provider-setup.md).
+Two complete examples follow: [A. Google Vertex AI](#example-a-google-cloud-vertex-ai) and [B. Azure OpenAI](#example-b-azure-openai-or-azure-ai-foundry).
+
+### Example A: Google Cloud Vertex AI
+
+![Vertex AI provider, filled in](images/tutorial/03a-vertex-example.png)
+
+**Once per project (admin).** Turn on Vertex AI, create a service account, and give it permission to call models:
+
+```bash
+PROJECT=my-gcp-project
+SA=supertm@$PROJECT.iam.gserviceaccount.com
+
+gcloud services enable aiplatform.googleapis.com monitoring.googleapis.com --project $PROJECT
+gcloud iam service-accounts create supertm --project $PROJECT --display-name "SuperTM Desktop"
+gcloud projects add-iam-policy-binding $PROJECT --member serviceAccount:$SA --role roles/aiplatform.user
+gcloud projects add-iam-policy-binding $PROJECT --member serviceAccount:$SA --role roles/monitoring.viewer  # optional: AI usage → Project tab
+```
+
+In **Model Garden**, enable the partner models you want (Claude, GLM, gpt-oss, …).
+
+**Once per user.** Create a key file and keep it private:
+
+```bash
+mkdir -p ~/.config/supertm
+gcloud iam service-accounts keys create ~/.config/supertm/sa-key.json --iam-account $SA
+chmod 600 ~/.config/supertm/sa-key.json
+```
+
+No key files allowed? Leave the key path empty and run `gcloud auth application-default login` once instead.
+
+**In the app:** **＋ Add provider → Google Vertex AI**, then fill in:
+
+| Field | Example |
+|---|---|
+| GCP project | `my-gcp-project` |
+| Default location | `global` (use a region like `us-east5` for regional models) |
+| Service-account key | `~/.config/supertm/sa-key.json` (only the path is saved) |
+| Models | one per line, as below |
+| Vision model | `google/gemini-3.8-flash` |
+| Claude prompt cache | `5 minutes (default)` |
+
+```text
+anthropic/claude-sonnet-5
+anthropic/claude-opus-5 @us-east5     # @region overrides the location for this model
+google/gemini-2.5-pro
+google/gemini-3.8-flash
+openai/gpt-oss-120b-maas describe     # describe = text-only; images go through the vision model
+zai-org/glm-5.2-maas describe
+```
+
+Press **Test**. You should see `✓ 6 models`. A `403` means the service account is missing `roles/aiplatform.user`. A `404` for one model means it is not enabled in Model Garden, or it is not served in that location; add `@region`.
+
+### Example B: Azure OpenAI (or Azure AI Foundry)
+
+![Azure OpenAI provider, filled in](images/tutorial/03b-azure-example.png)
+
+**In Azure.** Open your Azure OpenAI or AI Foundry resource:
+1. Under **Keys and Endpoint**, copy the endpoint `https://<resource>.openai.azure.com` and **Key 1**.
+2. Under **Deployments**, note the **deployment names**. The app calls these names, not the model names.
+
+You can also get them with the Azure CLI:
+
+```bash
+az cognitiveservices account deployment list -g <resource-group> -n <resource> -o table
+az cognitiveservices account keys list -g <resource-group> -n <resource> --query key1 -o tsv | pbcopy
+```
+
+For a Foundry project URL (`ai.azure.com/…/<subscription>,<resource-group>,,<resource>,<project>/…`), the host is still `https://<resource>.openai.azure.com`.
+
+**In the app:** **＋ Add provider → Azure OpenAI**, then fill in:
+
+| Field | Example |
+|---|---|
+| Resource host | `https://contoso-ai.openai.azure.com` |
+| API key | Key 1 (encrypted with the macOS keychain) |
+| API version | `2025-04-01-preview` |
+| Deployment names | `gpt-5.5`, `gpt-6.1-sol`, `o4-mini` (one per line) |
+
+**Save**, then send a short prompt to each deployment. Azure has no call to list deployments, so **Test** only checks the host. Unless Azure is the primary provider, its models show as `azure::<deployment>`. Models that only support the Responses API (for example `gpt-6.1-sol`) are switched to it automatically.
+
+**Optional: see Azure cost in AI usage.** Open **Usage & billing (optional)**:
+
+![Azure usage & billing fields](images/tutorial/03c-azure-usage.png)
+
+- **Sign-in:** leave the fields blank to use `az login`. To use a service principal, fill in **Tenant id**, **Client id** and **Client secret**.
+- **ARM resource id:** leave it blank to find the resource by its host name, or paste it from the portal's **JSON View**.
+- **Roles:** the identity needs **Monitoring Reader** on the resource for token counts. Add **Cost Management Reader** on the resource group to see billed $.
+
+```bash
+az ad sp create-for-rbac -n supertm-usage --role "Monitoring Reader" \
+  --scopes /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<resource>
+az role assignment create --assignee <appId> --role "Cost Management Reader" \
+  --scope /subscriptions/<sub>/resourceGroups/<rg>
+```
+
+More detail and troubleshooting for every provider kind: see [provider-setup.md](provider-setup.md).
 
 ## 3. Chat with the agent
 

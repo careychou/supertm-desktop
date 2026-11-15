@@ -4,10 +4,11 @@ How SuperTM Desktop works inside. Start here, then read the deep dives.
 
 | Doc | What it covers |
 |---|---|
-| [tutorial.md](tutorial.md) | **Start here.** Illustrated walkthrough: working folders, providers, chatting, skills per folder, compaction, AI usage, Sync sessions export/import |
+| [tutorial.md](tutorial.md) | **Start here.** Illustrated walkthrough: working folders, providers (Vertex + Azure examples), chatting, skills per folder, compaction, AI usage, Sync sessions export/import |
 | [agent-framework.md](agent-framework.md) | Agent loop, sub-agents, context passing, request queue, tool calls, permissions, cancellation, system prompt, event model |
 | [memory-compaction.md](memory-compaction.md) | How long chats are compacted: turns, plans, clustering, summarization, incremental merge, turn map, compaction model, cache-aware auto-compact |
 | [algorithms-and-internals.md](algorithms-and-internals.md) | Model providers and routing (custom endpoint, Azure OpenAI, native Google Vertex AI with service-account auth), adapter and streaming, attachment compression and request budget, persistence and forks, ordering, memory export, usage and cost, shell/sql/web_fetch tools, settings |
+| [features.md](features.md) | Feature reference: every feature in detail (moved out of the top-level README) |
 | [provider-setup.md](provider-setup.md) | Step-by-step setup of Google Vertex AI (GCP project, service account, roles, model lines), Azure OpenAI (resource host, key, API version, deployments) and custom endpoints; primary provider; troubleshooting |
 
 > [`history/design.md`](history/design.md) and [`history/plan.md`](history/plan.md) are the original MVP spec and plan. They are historical: compaction, attachments, queueing, usage and modes were added later and are documented here.
