@@ -7,6 +7,7 @@ import type { Settings } from '../main/settings'
 import type { ModelGroup, ProviderEntry } from './providers'
 import type { Attachment } from '../engine/content'
 import type { AttachMeta } from './attach'
+import type { FolderConfig, MarketPlugin, PluginResult, PluginsStatus, PluginUpdates } from './plugins'
 
 export type { Attachment, AttachMeta }
 export interface AttachInput { path?: string; name?: string; data?: Uint8Array }
@@ -28,6 +29,9 @@ export type PushEvent =
   | { type: 'compacted'; sessionId: string; item: CompactItem; beforeTurn: number }
   | { type: 'tokens'; sessionId: string; tokens: number }
   | { type: 'usage' }
+  | { type: 'pluginsStatus'; status: PluginsStatus }
+  | { type: 'pluginsLog'; folder: string; line: string }
+  | { type: 'pluginsOpen'; folder: string }
 
 export interface RegistryInfo { skills: Array<{ name: string; description: string; source: string }>; agents: Array<{ name: string; description: string; source: string }>; warnings: string[] }
 
@@ -97,4 +101,18 @@ export interface DeskApi {
   /** Omit `cwd` for personal (~/.copilot) items only. */
   registryInfo(cwd?: string): Promise<RegistryInfo>
   onPush(cb: (e: PushEvent) => void): () => void
+  /** Marketplace plugins installed into a working folder's .github/. */
+  plugins: PluginsApi
+}
+
+export interface PluginsApi {
+  status(folder: string): Promise<PluginsStatus>
+  /** Status of every working folder with plugins. */
+  statuses(): Promise<PluginsStatus[]>
+  saveConfig(folder: string, c: FolderConfig): Promise<void>
+  list(folder: string, force?: boolean): Promise<{ plugins: MarketPlugin[]; errors: string[] }>
+  install(folder: string, name: string, marketplace: string): Promise<PluginResult>
+  uninstall(folder: string, name: string): Promise<PluginResult>
+  checkUpdates(folder: string): Promise<PluginUpdates | undefined>
+  updateAll(folder: string): Promise<PluginResult>
 }

@@ -17,6 +17,15 @@ Everything SuperTM Desktop does, in detail. New to the app? Start with the [tuto
 - Loaded from the chat's working folder (`.github/`) **plus** your personal `~/.copilot/`; also picks up `copilot-instructions.md` from both.
 - **Settings → Skills & agents** lists them **per working folder** (each folder's own `.github/` items) plus a **Personal** entry for `~/.copilot/`, which every folder also loads. A folder's item wins over a personal one with the same name.
 
+## Folder plugins (marketplace)
+- Right-click a working folder → **⧉ Plugins…** to browse a plugin marketplace and install plugins **into that folder's `.github/`**, not into your global `~/.copilot/`. Each folder gets only the skills and agents it needs.
+- Works with Copilot / Claude-style marketplaces (`.github/plugin/marketplace.json` or `.claude-plugin/marketplace.json`). Plugin sources can be folders inside the marketplace repo, other git repos (`url` / `github`, optionally with a `path`), and skills dirs such as `./.claude/skills`. Agents `*.md` are installed as `*.agent.md`. Hooks, MCP servers and commands are reported but not installed.
+- **Marketplaces** tab: add any git URL plus an optional branch, e.g. `https://github.com/github/awesome-copilot` on branch `marketplace`. Private repos use your SSH key, falling back to the HTTPS token from your git credentials.
+- Settings live in `.github/supertm.json`, next to `supertm.lock.json`, which records file hashes. The app refuses to overwrite skills you wrote yourself, and uninstall removes only the files the plugin added.
+- **Updates**: the app checks every 6 hours and when you open a chat in the folder. A **⬆** badge on the folder means updates are ready; **Update all** applies them. Untick *Check for updates automatically* to turn this off.
+- The agent can also manage plugins with the `folder_plugins` tool (status, list, install, uninstall, check/update). Changing anything asks for permission first.
+- New plugins show up in **new** chats.
+
 ## Chats & organization
 - **Working folders** — the sidebar groups chats by folder, Copilot-style. Pick the folder when starting a chat; skills/agents reload per folder.
 - **Fork from any turn** — hover a turn → *⑂ Fork from here*. The fork gets the history up to that point and is filed **under the chat it came from** (forks of forks nest).

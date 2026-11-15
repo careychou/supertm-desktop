@@ -37,6 +37,18 @@ function mk(script: Script, extra: Partial<ConstructorParameters<typeof Session>
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 describe('Session main loop', () => {
+  it('offers app-provided extra tools and prompt to the main agent', async () => {
+    const seen: string[] = []
+    const { s, adapter } = mk(async (r) => {
+      if (adapter.calls.length === 1) return [call('c1', 'hello_tool', { who: 'x' }), { type: 'finish', reason: 'tool_calls' }]
+      return say(toolResults(r).join('|'))
+    }, { extraPrompt: 'EXTRA_GUIDANCE', extraTools: [{ name: 'hello_tool', description: 'd', parameters: { type: 'object', properties: {} }, run: async (a: any, ctx) => { seen.push(ctx.cwd); return `hi ${a.who}` } }] })
+    expect(await s.send('go')).toEqual({ status: 'completed', text: 'hi x' })
+    expect(adapter.calls[0].tools!.some((t: any) => (t.name ?? t.function?.name) === 'hello_tool')).toBe(true)
+    expect(adapter.calls[0].messages[0].content).toContain('EXTRA_GUIDANCE')
+    expect(seen).toHaveLength(1)
+  })
+
   it('injects a prompt sent mid-run into the same conversation at the next step', async () => {
     let release!: () => void
     const gate = new Promise<void>((r) => { release = r })

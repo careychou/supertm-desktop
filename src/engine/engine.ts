@@ -5,6 +5,7 @@ import { loadRegistry, type Registry } from './registry/registry'
 import { AgentManager } from './manager'
 import { runLoop, AbortedError } from './loop'
 import { selectTools } from './tools'
+import type { ToolDef } from './tools/types'
 import { ShellManager } from './tools/shell'
 import { closeSessionDb } from './tools/sql'
 import { buildMainSystem } from './prompt'
@@ -32,6 +33,10 @@ export interface SessionOptions {
   history?: Message[]
   /** Model for summarizing/clustering during compaction; read on each use. Empty = the chat's model. */
   compactModel?: () => string
+  /** App-specific tools for the main agent (e.g. a branded build's installer). */
+  extraTools?: ToolDef[]
+  /** Extra guidance appended to the main agent's system prompt. */
+  extraPrompt?: string
 }
 
 /** agentId used for usage events from compaction calls. */
@@ -55,10 +60,15 @@ export class Session {
       maxConcurrency: o.maxConcurrency ?? 4, maxTurnsSub: o.maxTurnsSub ?? 30, autoApprove: o.autoApprove, reasoning: o.reasoning ?? 'medium',
       shells: this.shells, stateDir: o.stateDir
     })
-    this.messages = [{ role: 'system', content: buildMainSystem(this.registry, o.cwd, o.memory, o.folderMemory) }, ...(o.history ?? [])]
+    this.messages = [{ role: 'system', content: this.system() }, ...(o.history ?? [])]
     this.manager.onBackgroundDone = (parentId) => {
       if (parentId === MAIN_ID && !this.busy) this.onIdleNotification?.()
     }
+  }
+
+  private system() {
+    const base = buildMainSystem(this.registry, this.o.cwd, this.o.memory, this.o.folderMemory)
+    return this.o.extraPrompt ? `${base}\n\n${this.o.extraPrompt}` : base
   }
 
   /** Fired when a background sub-agent finishes while the main agent is idle. */
@@ -75,7 +85,7 @@ export class Session {
   /** Replaces the chat's or the folder's memory; takes effect on the next model call. */
   setMemory(kind: 'session' | 'folder', m: Memory) {
     if (kind === 'session') this.o.memory = m; else this.o.folderMemory = m
-    this.messages[0] = { role: 'system', content: buildMainSystem(this.registry, this.o.cwd, this.o.memory, this.o.folderMemory) }
+    this.messages[0] = { role: 'system', content: this.system() }
   }
 
   /** Prompts waiting to be added to the conversation. */
@@ -97,7 +107,7 @@ export class Session {
       do {
         text = await runLoop({
           agentId: MAIN_ID, model: this.o.model, adapter: this.o.adapter, sem: this.manager.sem, hooks: this.o.hooks,
-          tools: selectTools(undefined, 0), signal: controller.signal, maxTurns: this.o.maxTurnsMain ?? 50, reasoning: this.o.reasoning ?? 'medium',
+          tools: [...selectTools(undefined, 0), ...(this.o.extraTools ?? [])], signal: controller.signal, maxTurns: this.o.maxTurnsMain ?? 50, reasoning: this.o.reasoning ?? 'medium',
           ctx: { cwd: this.o.cwd, depth: 0, hooks: this.o.hooks, gate: this.manager.gate, registry: this.registry, agents: this.manager, shells: this.shells, stateDir: this.o.stateDir },
           drainNotifications: () => this.manager.drain(MAIN_ID),
           drainInput: () => this.drainQueue()

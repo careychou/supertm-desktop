@@ -56,6 +56,16 @@ const api: DeskApi = {
   importDefaults: inv('importDefaults') as any,
   importScan: inv('importScan') as any,
   importExternal: inv('importExternal') as any,
+  plugins: {
+    status: inv('plugins:status') as any,
+    statuses: inv('plugins:statuses') as any,
+    saveConfig: inv('plugins:saveConfig') as any,
+    list: inv('plugins:list') as any,
+    install: inv('plugins:install') as any,
+    uninstall: inv('plugins:uninstall') as any,
+    checkUpdates: inv('plugins:checkUpdates') as any,
+    updateAll: inv('plugins:updateAll') as any
+  },
   onPush(cb) {
     const h = (_e: unknown, p: PushEvent) => cb(p)
     ipcRenderer.on('push', h)

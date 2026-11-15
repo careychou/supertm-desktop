@@ -13,6 +13,7 @@ import { UsageModal } from './components/UsageModal'
 import { SettingsModal } from './components/SettingsModal'
 import { Sidebar } from './components/Sidebar'
 import { BRAND } from '../../shared/brand'
+import { PluginsModal } from './components/plugins/PluginsModal'
 
 const SUGGESTIONS = [
   'List the skills available in this folder and what each family is for.',
@@ -49,6 +50,11 @@ export function App() {
   const [draftMem, setDraftMem] = useState<Memory>(emptyMemory())
   const [memEdit, setMemEdit] = useState<{ kind: 'session' | 'folder'; cwd: string } | null>(null)
   const [sharing, setSharing] = useState<SessionRow | null>(null)
+  const [pluginsFor, setPluginsFor] = useState<string | null>(null)
+  const [plUpdates, setPlUpdates] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    void window.desk.plugins.statuses().then((all) => setPlUpdates(new Set(all.filter((s) => s.update?.plugins.length).map((s) => s.folder))))
+  }, [])
   const [reg, setReg] = useState<RegistryInfo | null>(null)
   const [folderMenu, setFolderMenu] = useState(false)
   const [perms, setPerms] = useState<PermissionReq[]>([])
@@ -113,6 +119,13 @@ export function App() {
     const off = window.desk.onPush((p: PushEvent) => {
       if (p.type === 'usage') { clearTimeout(usageTimer); usageTimer = setTimeout(() => void refreshUsage(), 800); return }
       if (p.type === 'sessions') { applyListing(p); return }
+      if (p.type === 'pluginsOpen') { setPluginsFor(p.folder); return }
+      if (p.type === 'pluginsStatus') {
+        const has = !!p.status.update?.plugins.length
+        setPlUpdates((prev) => { if (prev.has(p.status.folder) === has) return prev; const n = new Set(prev); has ? n.add(p.status.folder) : n.delete(p.status.folder); return n })
+        return
+      }
+      if (p.type === 'pluginsLog') return
       if (p.type === 'busy') setBusyIds((prev) => { const n = new Set(prev); p.busy ? n.add(p.sessionId) : n.delete(p.sessionId); return n })
       const mine = p.sessionId === currentRef.current?.id
       if (p.type === 'agent' && (p.event.kind === 'user_input' || p.event.kind === 'queue_cleared')) {
@@ -142,7 +155,8 @@ export function App() {
 
   // skills/agents are discovered per working folder (folder .github + ~/.copilot)
   const cwd = current?.cwd ?? draftCwd
-  useEffect(() => { if (cwd) void window.desk.registryInfo(cwd).then(setReg) }, [cwd])
+  const refreshReg = useCallback(() => { if (cwd) void window.desk.registryInfo(cwd).then(setReg) }, [cwd])
+  useEffect(refreshReg, [refreshReg])
 
   useEffect(() => {
     const el = scroller.current
@@ -273,7 +287,8 @@ export function App() {
         <Sidebar folders={folders} sessions={sessions} bookmarks={bookmarks} onCompact={openCompact} currentId={current?.id ?? null} busyIds={busyIds}
           onOpen={open} onNewChat={newChat} onDelete={del} onAddFolder={addFolder} onRemoveFolder={removeFolder} onFolderMemory={(p) => setMemEdit({ kind: 'folder', cwd: p })}
           onCollapse={() => setSidebar(false)} onSettings={() => setShowSettings(true)} onUsage={() => setShowUsage(true)} usage={usage}
-          onShare={async (s) => { await persistCurrent(); setSharing(s) }} />
+          onShare={async (s) => { await persistCurrent(); setSharing(s) }}
+          onPlugins={(f) => setPluginsFor(f)} pluginUpdates={plUpdates} />
       </div>
       {sidebar && <div className="side-resize" style={{ left: sideW - 3 }} onMouseDown={startResize}
         onDoubleClick={() => { setSideW(SIDE_DEFAULT); localStorage.setItem('sideW', String(SIDE_DEFAULT)) }} title="Drag to resize · double-click to reset" />}
@@ -352,6 +367,7 @@ export function App() {
       {showSettings && <SettingsModal cwd={cwd} folders={folders.map((f) => f.path)} onClose={() => { setShowSettings(false); void refreshModels(); void refreshUsage(); void window.desk.getSettings().then((s) => { setDefaultEffort(s.reasoning); setDefaultMode(s.defaultMode); setCompactCfg({ mode: s.autoCompact, threshold: s.compactThreshold, keep: s.compactKeepRecent }) }) }} />}
       {compacting && <CompactModal session={compacting} keepRecentDefault={compactCfg.keep} onClose={() => setCompacting(null)}
         onDone={(m) => { setCompacting(null); flash(m) }} />}
+      {pluginsFor && <PluginsModal folder={pluginsFor} onClose={() => { setPluginsFor(null); refreshReg() }} />}
       {toast && <div className="toast">{toast}</div>}
       {sharing && <ShareModal session={sharing} onClose={() => setSharing(null)} />}
       {memEdit && (memEdit.kind === 'folder'

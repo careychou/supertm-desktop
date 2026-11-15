@@ -24,6 +24,10 @@ interface Props {
   usage: { today: number | null; budget: number }
   onShare(s: SessionRow): void
   onCompact(s: SessionRow): void
+  /** Open the Plugins panel for a folder. */
+  onPlugins?(path: string): void
+  /** Folders with plugin updates available. */
+  pluginUpdates?: Set<string>
 }
 
 const base = (p: string) => p.split('/').filter(Boolean).pop() ?? p
@@ -224,6 +228,7 @@ function FolderGroup({ folder, sessions, c }: { folder: FolderRow; sessions: Ses
   const menu = (e: React.MouseEvent) => c.setMenu(at(e, [
     { label: '✎ New chat', onClick: () => c.onNewChat(folder.path) },
     { label: hasMem ? '🗂 Edit folder memory…' : '🗂 Add folder memory…', onClick: () => c.onFolderMemory(folder.path) },
+    ...(c.onPlugins ? [{ label: '⧉ Plugins…', onClick: () => c.onPlugins!(folder.path) }] : []),
     'sep',
     { label: '× Remove folder', danger: true, onClick: () => c.onRemoveFolder(folder.path) }
   ]))
@@ -232,6 +237,7 @@ function FolderGroup({ folder, sessions, c }: { folder: FolderRow; sessions: Ses
       <div className="folder-row" onClick={() => setOpen(!open)} onContextMenu={menu} title={folder.path}>
         <span className="folder-icon">{open ? '📂' : '📁'}</span>
         <span className="title">{base(folder.path)}</span>
+        {c.pluginUpdates?.has(folder.path) && <button className="tm-badge" title="Plugin updates available. Click to review." onClick={(e) => { e.stopPropagation(); c.onPlugins?.(folder.path) }}>⬆</button>}
         {hasMem && <button className="folder-mem" title="Folder memory: shared by every chat in this folder. Click to edit." onClick={(e) => { e.stopPropagation(); c.onFolderMemory(folder.path) }}>🗂</button>}
         <button className="folder-act" title="New chat in this folder" onClick={(e) => { e.stopPropagation(); c.onNewChat(folder.path) }}>＋</button>
         <button className="folder-act" title="More actions: folder memory, remove" onClick={menu}>⋯</button>

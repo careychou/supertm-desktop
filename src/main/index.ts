@@ -21,6 +21,7 @@ import { exportSessions, importSessions, resolveSyncFile, scanSessions } from '.
 import type { ExternalSource } from '../shared/sync'
 import { externalDefaults, importExternal, scanClaude, scanCopilot, copilotRoot } from './import-external'
 import { azureUsageProvider, getAzureUsage, getLocalUsage, getProjectUsage, loadPricing, usageProvider } from './usage'
+import { registerPlugins } from './plugins'
 import { autoCompactDecision, estimateTokens, keepLastPlan, splitHistoryTurns, type CompactPlan } from '../engine/compact'
 
 // GUI apps launched from Finder get a minimal PATH; give shell tools a usable one.
@@ -30,6 +31,8 @@ let win: BrowserWindow | null = null
 let store: Store
 let settings: Settings
 const live = new Map<string, Session>()
+// Folder plugins (marketplace skills + agents in <folder>/.github/)
+let plugins: ReturnType<typeof registerPlugins> | null = null
 // open permission/ask prompts; Stop resolves a session's prompts with `cancel` so the run can unwind
 const pending = new Map<string, { sid: string; kind: 'permission' | 'ask'; resolve: (v: any) => void; cancel: unknown }>()
 
@@ -61,6 +64,7 @@ function getLive(id: string): Session {
     adapter: adapter(), cwd: row.cwd, model: row.model, history: store.loadMessages(id),
     maxConcurrency: settings.maxConcurrency, maxTurnsMain: settings.maxTurnsMain, maxTurnsSub: settings.maxTurnsSub, reasoning: effortOf(row), memory: parseMemory(row.memories), folderMemory: folderMemoryOf(row.cwd),
     autoApprove: modeOf(row) === 'autopilot', stateDir: stateDirOf(id), compactModel: () => settings.compactModel,
+    extraTools: plugins?.tools,
     hooks: {
       onEvent: (event) => {
         if (event.kind === 'usage') {
@@ -172,6 +176,7 @@ function registerIpc() {
   ipcMain.handle('openSession', (_e, id: string) => {
     const session = store.getSession(id)
     const l = live.get(id)
+    if (session) plugins?.checkFolder(session.cwd)
     return { session, items: store.loadUiItems(id), busy: l?.isBusy ?? false, tokens: l ? l.tokenEstimate : estimateTokens(store.loadMessages(id)) }
   })
   ipcMain.handle('createSession', (_e, o: { cwd: string; model: string; reasoning?: Effort; mode?: Mode; memory?: Memory }) => {
@@ -179,6 +184,7 @@ function registerIpc() {
     const row = { id: randomUUID(), title: 'New chat', cwd: o.cwd, model: o.model, created_at: now, updated_at: now, parent_id: null, fork_turn: null,
       reasoning: o.reasoning ?? null, mode: o.mode ?? null, memories: o.memory ? serializeMemory(o.memory) : null }
     store.createSession(row)
+    plugins?.checkFolder(o.cwd)
     settings.defaultCwd = o.cwd; settings.defaultModel = o.model; saveSettings(settings)
     return row
   })
@@ -365,11 +371,12 @@ app.whenReady().then(() => {
   settings = loadSettings()
   store = new Store(dataHome)
   registerIpc()
+  plugins = registerPlugins(ipcMain, { dataHome, push, folders: () => store.listFolders().map((f) => f.path) })
   createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
 })
 
-app.on('before-quit', () => { for (const s of live.values()) s.dispose() })
+app.on('before-quit', () => { for (const s of live.values()) s.dispose(); plugins?.dispose() })
 
 app.on('window-all-closed', () => {
   for (const s of live.values()) { s.stop(); s.dispose() }

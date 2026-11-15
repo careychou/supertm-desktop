@@ -1,4 +1,5 @@
 import type { Pricing } from './usage'
+import type { MarketplaceRef } from './plugins'
 
 // Product identity. A branded build can override these values on its own branch.
 export const BRAND = {
@@ -23,5 +24,9 @@ export const BRAND = {
   /** Prefill for a new Google Vertex AI provider (model lines: `<publisher>/<model> [@location] [describe]`). */
   vertexDefaults: { project: '', location: 'global', models: [] as string[], visionModel: '' },
   /** Built-in price table for the usage panel, used when no pricing.json is found. */
-  pricing: null as Pricing | null
+  pricing: null as Pricing | null,
+  /** Per-folder plugin settings file, in <folder>/.github/ (its lock is <name>.lock.json). */
+  folderConfig: 'supertm.json',
+  /** Marketplaces a folder starts with (users add their own in the Plugins panel). */
+  pluginMarketplaces: [] as MarketplaceRef[]
 }
