@@ -291,14 +291,15 @@ function save(store: Store, r: SyncImportResult, src: { title: string; cwd: stri
 }
 
 /** Imports chosen chats from another tool. Their IDs mean nothing here, so every chat gets a new UUID: never a conflict. */
-export async function importExternal(store: Store, kind: ExternalSource, root: string, ids: string[], model: string): Promise<SyncImportResult> {
+/** Each picked chat is added as new, filed under `dest` (a working folder on this Mac) instead of the other tool's folder. */
+export async function importExternal(store: Store, kind: ExternalSource, root: string, ids: string[], model: string, dest?: string): Promise<SyncImportResult> {
   const r: SyncImportResult = { added: 0, overwritten: 0, forked: 0, skipped: 0, ids: [] }
   if (kind === 'claude') {
     const known = new Set(claudeFiles(root))
     for (const file of ids) {
       if (!known.has(file)) { r.skipped++; continue }
       const conv = await convertClaude(file, model)
-      save(store, r, { title: conv.title || firstPrompt(conv) || 'Claude session', cwd: conv.cwd, created: conv.start, updated: conv.end, model }, conv)
+      save(store, r, { title: conv.title || firstPrompt(conv) || 'Claude session', cwd: dest || conv.cwd, created: conv.start, updated: conv.end, model }, conv)
     }
     return r
   }
@@ -320,7 +321,7 @@ export async function importExternal(store: Store, kind: ExternalSource, root: s
     const w = yaml(path.join(stateDir, id, 'workspace.yaml'))
     const events = path.join(stateDir, id, 'events.jsonl')
     const conv = fs.existsSync(events) ? await convertCopilotEvents(events, model) : convertCopilotTurns(s?.turns ?? [], model)
-    save(store, r, { title: w.name || s?.summary || firstPrompt(conv) || 'Copilot session', cwd: w.cwd || s?.cwd || '', created: ms(w.created_at, s?.created ?? 0), updated: ms(w.updated_at, s?.updated ?? 0), model }, conv)
+    save(store, r, { title: w.name || s?.summary || firstPrompt(conv) || 'Copilot session', cwd: dest || w.cwd || s?.cwd || '', created: ms(w.created_at, s?.created ?? 0), updated: ms(w.updated_at, s?.updated ?? 0), model }, conv)
   }
   return r
 }

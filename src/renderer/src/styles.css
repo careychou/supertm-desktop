@@ -403,6 +403,9 @@ button.danger { color: var(--fail); }
 .sync-warn { color: #9a6700; margin-bottom: 4px; }
 .sync-table select { font-size: 12.5px; padding: 2px 4px; }
 .sync h4 { margin: 10px 0 2px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.sync-dest { display: flex; flex-direction: column; gap: 4px; }
+.sync-dest label { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.sync-dest select { flex: 1; min-width: 0; }
 .sync-sources { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .modal .sync-sources button { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 10px 12px; }
 .modal .sync-sources button.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }

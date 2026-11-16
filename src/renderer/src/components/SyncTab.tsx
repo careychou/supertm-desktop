@@ -8,6 +8,8 @@ const KEY = 'syncDir'
 const when = (t: number) => new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
 const CHOICES: Array<[SyncChoice, string]> = [['skip', 'Skip'], ['overwrite', 'Overwrite local'], ['fork', 'Import as fork']]
+const PICK = '\u0000pick'
+const base = (p: string) => p.replace(/\/+$/, '').split('/').pop() || p
 const clean = (e: any) => String(e?.message ?? e).replace(/^Error invoking remote method '\w+': (Error: )?/, '')
 
 const SOURCES: Array<{ kind: ImportSource; label: string; hint: string }> = [
@@ -66,6 +68,9 @@ export function SyncTab() {
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [choice, setChoice] = useState<Record<string, SyncChoice>>({})
   const [busy, setBusy] = useState('')
+  // where new chats go on this Mac; the source's folder path is never brought over
+  const [dest, setDest] = useState('')
+  const [folders, setFolders] = useState<string[]>([])
 
   const act = async (label: string, f: () => Promise<void>) => {
     setBusy(label); setMsg('')
@@ -83,7 +88,8 @@ export function SyncTab() {
     const d = await window.desk.pickFolder({ defaultPath: last ?? undefined, title: `Import from ${label}`, buttonLabel: 'Read sessions' })
     if (!d) return
     localStorage.setItem(`${KEY}:${kind}`, d)
-    setScan(null); setChoice({})
+    setScan(null); setChoice({}); setDest('')
+    setFolders((await window.desk.listSessions()).folders.map((f) => f.path))
     if (kind === 'owned') {
       const r = await window.desk.syncScan(d)
       setScan({ kind, root: r.file, manifest: r.manifest, sessions: r.sessions })
@@ -96,17 +102,24 @@ export function SyncTab() {
       if (!r.sessions.length) setMsg(`No ${label} sessions with turns in that folder.`)
     }
   })
+  const chooseDest = async (v: string) => {
+    if (v !== PICK) return setDest(v)
+    const d = await window.desk.pickFolder({ title: 'Import into working folder', buttonLabel: 'Use this folder' })
+    if (!d) return
+    setFolders((f) => (f.includes(d) ? f : [...f, d])); setDest(d)
+  }
   const doImport = () => act('Importing…', async () => {
     if (!scan) return
+    if (needsDest && !dest) return setMsg('Choose the working folder to import into.')
     let r
     if (scan.kind === 'owned') {
       const picks = scan.sessions.filter((s) => picked.has(s.id)).map((s) => ({ id: s.id, choice: s.local ? choice[s.id] ?? 'skip' : undefined }))
       const over = scan.sessions.filter((s) => s.local && picks.some((p) => p.id === s.id && p.choice === 'overwrite'))
       if (over.length && !window.confirm(`Overwrite ${over.length} chat${over.length > 1 ? 's' : ''} on this Mac?\n\n${over.map((s) => `• ${s.local!.title}: import is ${ageDiff(s.updated_at, s.local!.updated_at)}`).join('\n')}\n\nThe local cop${over.length > 1 ? 'ies are' : 'y is'} replaced and cannot be restored.`)) return
-      r = await window.desk.syncImport(scan.root, picks)
+      r = await window.desk.syncImport(scan.root, picks, dest || undefined)
       setScan({ ...scan, sessions: (await window.desk.syncScan(scan.root)).sessions })
     } else {
-      r = await window.desk.importExternal(scan.kind, scan.root, [...picked])
+      r = await window.desk.importExternal(scan.kind, scan.root, [...picked], dest)
     }
     const parts = [r.added && `${r.added} added`, r.overwritten && `${r.overwritten} overwritten`, r.forked && `${r.forked} imported as fork${r.forked === 1 ? '' : 's'}`, r.skipped && `${r.skipped} skipped`].filter(Boolean)
     setMsg(`✓ ${parts.join(', ') || 'Nothing imported'}`)
@@ -116,6 +129,9 @@ export function SyncTab() {
   const list = scan?.sessions ?? []
   const owned = scan?.kind === 'owned'
   const conflicts = owned ? list.filter((s) => s.local && picked.has(s.id)) : []
+  // overwritten / forked chats stay in their local folder, so only new chats need a destination
+  const needsDest = list.some((s) => picked.has(s.id) && !s.local)
+  const srcFolders = [...new Set(list.filter((s) => picked.has(s.id) && !s.local).map((s) => s.group ?? s.cwd).filter((f) => f && f !== '/'))]
   const srcLabel = SOURCES.find((s) => s.kind === scan?.kind)?.label
 
   return (
@@ -158,9 +174,19 @@ export function SyncTab() {
         />
         {conflicts.length > 0 && <div className="muted small"><b>Overwrite local</b> replaces this Mac's copy. <b>Import as fork</b> keeps it and adds the import, with a new ID, under it. <b>Skip</b> leaves it alone.</div>}
         {!owned && <div className="muted small">Imported chats keep the full transcript (messages, tool calls and results). The model continues from a text-only history, and the other tool's compaction summaries carry over.</div>}
+        {needsDest && <div className="sync-dest">
+          <label>Import into working folder
+            <select value={dest} onChange={(e) => void chooseDest(e.target.value)}>
+              <option value="" disabled>Choose a working folder…</option>
+              {folders.map((f) => <option key={f} value={f} title={f}>{base(f)} · {f}</option>)}
+              <option value={PICK}>Choose another folder…</option>
+            </select>
+          </label>
+          <div className="muted small">Only the chats are imported. They go under this folder{srcFolders.length === 1 ? <> instead of <b title={srcFolders[0]}>{srcFolders[0]}</b></> : srcFolders.length > 1 ? ' instead of their original folders' : ''}, so no second folder with the same name is added.{owned && conflicts.length > 0 ? ' Overwritten or forked chats stay in their current folder.' : ''}</div>
+        </div>}
         <div className="row-actions">
           <div className="spacer" />
-          <button className="primary" disabled={!!busy || picked.size === 0} onClick={doImport}>Import {picked.size || ''} selected</button>
+          <button className="primary" disabled={!!busy || picked.size === 0 || (needsDest && !dest)} onClick={doImport}>Import {picked.size || ''} selected</button>
         </div>
       </>}
 

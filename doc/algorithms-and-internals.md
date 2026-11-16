@@ -196,6 +196,8 @@ Moves chats between Macs through any shared folder. The session UUID is what ide
 
   The UI shows each conflict's difference between the import's and the local `updated_at` ("2 h 5 min newer"). An imported fork keeps its `parent_id` when the parent is imported too or already exists here; otherwise it is filed at the top level. Overwriting a chat that is running is refused. Usage records, settings and bookmarks are not imported.
 
+  **Destination folder:** the import panel asks which working folder on this Mac to import into (required when any picked chat is new). New chats, including their imported forks, get that folder as `cwd`; the source Mac's path is never kept, so the sidebar does not grow a second folder with the same name. An overwritten or forked chat keeps the folder its local copy uses. The source folder's memory is copied to the destination when that folder has none.
+
 ### Import from GitHub Copilot and Claude Code (`src/main/import-external.ts`)
 
 *Import from* offers three sources: a SuperTM export (above), **GitHub Copilot** and **Claude Code**. Their IDs mean nothing here, so every picked chat is **added with a new UUID**; nothing conflicts and importing twice gives two copies.
@@ -208,7 +210,7 @@ Moves chats between Macs through any shared folder. The session UUID is what ide
 - **Scan** lists chats with at least one real prompt, grouped by working folder. The picker (`SessionTree.tsx`, shared with export) shows them as a folder tree: paths split into segments with `/Users/<you>` shown as `~`, chains without chats collapsed into one row, folders and chats sorted newest first, forks nested under their parent. Title: Copilot's workspace name, else its summary, else the first prompt; Claude's custom title or summary, else the first prompt. Copilot turn counts come from `turns`, else a fast line count of `events.jsonl`; neither scan parses whole transcripts.
 - **What counts as a prompt:** Copilot `user.message` events without a `source` (agent, autopilot and workspace notifications are skipped); Claude `user` lines that are not meta, sidechain or compact summaries, have `origin.kind` absent or `human`, and are not slash-command, hook, system-reminder, task-notification or interrupt noise. Claude *wake* envelopes are unwrapped to the message text. Sub-agent events (`agentId`, `parentToolCallId`, `isSidechain`) are skipped.
 - **Conversion:** the UI log keeps the full transcript as user, assistant (with reasoning), tool (arguments clipped to 4k, output to 20k characters) and compaction items. The model history is text only: each turn is the prompt plus one assistant message with the turn's answer and a `(Tools used: name ×n)` tally, so the provider never receives another tool's tool-call IDs. A Copilot `session.compaction_complete` or Claude compact summary becomes this app's compaction summary pair, and `compact_offset` is set to the number of turns it covers so turn mapping stays correct.
-- The chat keeps the source's working folder (home if missing), first and last timestamps, and uses the default model.
+- The chat is filed under the **destination working folder** chosen in the import panel (not the other tool's folder); it keeps the first and last timestamps and uses the default model.
 
 ## 7. Usage and cost
 

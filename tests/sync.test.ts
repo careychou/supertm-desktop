@@ -41,6 +41,17 @@ describe('Sync sessions', () => {
     expect(desktop.getSession('c')!.updated_at).toBe(3_000)
   })
 
+  it('files new chats, fork tree included, under the chosen folder and never adds the source folder', () => {
+    desktop.addFolder('/here/aitm')
+    desktop.createSession(row('a', 1_000_000, { cwd: '/mine' }))
+    importSessions(desktop, file, [{ id: 'a', choice: 'fork' }, { id: 'b' }, { id: 'c' }], undefined, '/here/aitm')
+    expect(desktop.getSession('b')!.cwd).toBe('/here/aitm')
+    expect(desktop.getSession('c')).toMatchObject({ cwd: '/here/aitm', parent_id: 'b' })
+    // a fork of a chat already here stays in that chat's folder
+    expect(desktop.listSessions().find((s) => s.title === 'a · imported')!.cwd).toBe('/mine')
+    expect(desktop.listFolders().map((f) => f.path)).not.toContain('/w')
+  })
+
   it('files a fork at the top level when its parent is not imported', () => {
     importSessions(desktop, file, [{ id: 'c' }])
     expect(desktop.getSession('c')!.parent_id).toBeNull()

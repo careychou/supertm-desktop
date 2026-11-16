@@ -91,13 +91,13 @@ export interface DeskApi {
   syncExport(dir: string, ids?: string[]): Promise<SyncManifest>
   /** Lists the sessions in an exported folder, flagging UUIDs that already exist here. */
   syncScan(dir: string): Promise<{ file: string; manifest: SyncManifest | null; sessions: SyncCandidate[] }>
-  syncImport(file: string, picks: Array<{ id: string; choice?: SyncChoice }>): Promise<SyncImportResult>
+  syncImport(file: string, picks: Array<{ id: string; choice?: SyncChoice }>, dest?: string): Promise<SyncImportResult>
   /** Where GitHub Copilot / Claude Code keep their sessions on this Mac, when present. */
   importDefaults(): Promise<Record<ExternalSource, string | null>>
   /** Lists another tool's chats (candidate ids are Copilot session ids or Claude .jsonl paths). */
   importScan(kind: ExternalSource, dir: string): Promise<{ root: string; sessions: SyncCandidate[] }>
   /** Imports them with new UUIDs, so they never conflict. */
-  importExternal(kind: ExternalSource, root: string, ids: string[]): Promise<SyncImportResult>
+  importExternal(kind: ExternalSource, root: string, ids: string[], dest?: string): Promise<SyncImportResult>
   /** Omit `cwd` for personal (~/.copilot) items only. */
   registryInfo(cwd?: string): Promise<RegistryInfo>
   onPush(cb: (e: PushEvent) => void): () => void

@@ -221,7 +221,8 @@ Then:
 
 1. Browse the tree. It is grouped by working folder; use **Expand all / Collapse all** or **Filter**.
 2. Tick a folder to select everything in it, or tick single chats. The header shows how many are selected.
-3. Click **Import N selected**. Imported chats appear in the sidebar under their working folder.
+3. Under **Import into working folder**, choose one of your working folders, or **Choose another folder…**. Only the chats are imported, not the other Mac's folder path, so you never get a second folder with the same name. Chats that already exist here (**Overwrite** / **Import as fork**) stay in their current folder.
+4. Click **Import N selected**. The chats appear in the sidebar under the folder you chose, with forks nested under their parent.
 
 Imported chats keep the full transcript, including tool calls and results. The model continues from a text-only version of the history.
 

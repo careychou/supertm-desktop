@@ -76,9 +76,11 @@ export function scanSessions(store: Store, file: string): { manifest: SyncManife
 /**
  * Imports the chosen sessions. New UUIDs are added as-is. For a UUID that already exists locally the choice decides:
  * `overwrite` replaces the local chat, `fork` adds it with a new UUID filed under the local chat, `skip` leaves both alone.
- * Folder memory for an imported chat's folder is copied too when this Mac has none for that folder.
+ * New chats are filed under `dest`, a working folder on this Mac: the source Mac's folder path is not brought over, so
+ * the import never adds a second folder with the same name. An overwritten or forked chat stays in the folder its local
+ * copy already uses. The source folder's memory is copied to that folder when this Mac has none for it.
  */
-export function importSessions(store: Store, file: string, picks: Array<{ id: string; choice?: SyncChoice }>, stateDirOf?: (id: string) => string): SyncImportResult {
+export function importSessions(store: Store, file: string, picks: Array<{ id: string; choice?: SyncChoice }>, stateDirOf?: (id: string) => string, dest?: string): SyncImportResult {
   const db = openSource(file)
   const res: SyncImportResult = { added: 0, overwritten: 0, forked: 0, skipped: 0, ids: [] }
   try {
@@ -94,9 +96,9 @@ export function importSessions(store: Store, file: string, picks: Array<{ id: st
       const local = store.getSession(id)
       const c: SyncChoice = local ? choice ?? 'skip' : 'overwrite'
       if (c === 'skip') { res.skipped++; continue }
-      let row: SessionRow = { ...src }
+      let row: SessionRow = { ...src, cwd: local?.cwd ?? dest ?? src.cwd }
       if (local && c === 'fork') {
-        row = { ...src, id: randomUUID(), parent_id: id, fork_turn: null, sort_order: null, title: `${src.title} · imported` }
+        row = { ...row, id: randomUUID(), parent_id: id, fork_turn: null, sort_order: null, title: `${src.title} · imported` }
       } else {
         // keep the import's own tree when its parent came along or already exists here; otherwise file it at the top level
         if (row.parent_id && !chosen.has(row.parent_id) && !store.getSession(row.parent_id)) row = { ...row, parent_id: null, fork_turn: null }
@@ -104,7 +106,7 @@ export function importSessions(store: Store, file: string, picks: Array<{ id: st
       }
       store.putSession(row)
       // folder memory travels with its chats, but never replaces memory already set on this Mac
-      const fm = (folderMem?.get(row.cwd) as { memory?: string | null } | undefined)?.memory
+      const fm = (folderMem?.get(src.cwd) as { memory?: string | null } | undefined)?.memory
       if (fm && !store.getFolder(row.cwd)?.memory) store.setFolderMemory(row.cwd, fm)
       store.saveMessages(row.id, (msgs.all(id) as any[]).map((r) => JSON.parse(r.content_json) as Message))
       store.saveUiItems(row.id, (items.all(id) as any[]).map((r) => JSON.parse(r.item_json)))

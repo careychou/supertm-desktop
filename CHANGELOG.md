@@ -1,5 +1,14 @@
 # Release notes
 
+## 1.2.1
+
+### Fix: imports no longer add a duplicate working folder
+Importing chats (from another Mac's SuperTM export, GitHub Copilot or Claude Code) used to keep the source machine's folder path, so the sidebar grew a second folder with the same name (e.g. two **aitm** folders).
+- The import panel now asks **Import into working folder**: pick one of your folders or **Choose another folder…**. **Import** stays disabled until you choose
+- Only the chats are imported, never the other Mac's folder path. Forked chats are imported under their parent in the same folder
+- Chats that already exist here (**Overwrite** / **Import as fork**) stay in their current folder
+- The source folder's memory is copied to the destination when that folder has none
+
 ## 1.2.0
 
 ### New: folder plugins from a marketplace

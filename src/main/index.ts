@@ -319,16 +319,16 @@ function registerIpc() {
     const root = kind === 'copilot' ? copilotRoot(dir) : dir
     return { root, sessions: kind === 'copilot' ? await scanCopilot(root) : await scanClaude(root) }
   })
-  ipcMain.handle('importExternal', async (_e, kind: ExternalSource, root: string, ids: string[]) => {
-    const r = await importExternal(store, kind, root, ids, settings.defaultModel)
+  ipcMain.handle('importExternal', async (_e, kind: ExternalSource, root: string, ids: string[], dest?: string) => {
+    const r = await importExternal(store, kind, root, ids, settings.defaultModel, dest)
     pushSessions()
     return r
   })
   ipcMain.handle('syncScan', (_e, dir: string) => { const file = resolveSyncFile(dir); return { file, ...scanSessions(store, file) } })
-  ipcMain.handle('syncImport', (_e, file: string, picks: Array<{ id: string; choice?: 'overwrite' | 'fork' | 'skip' }>) => {
+  ipcMain.handle('syncImport', (_e, file: string, picks: Array<{ id: string; choice?: 'overwrite' | 'fork' | 'skip' }>, dest?: string) => {
     // an overwritten chat must not keep running on its old history
     for (const p of picks) if (p.choice === 'overwrite') { const l = live.get(p.id); if (l?.isBusy) throw new Error('A chat you are overwriting is still running; stop it first.'); l?.dispose(); live.delete(p.id) }
-    const r = importSessions(store, file, picks, stateDirOf)
+    const r = importSessions(store, file, picks, stateDirOf, dest)
     pushSessions()
     return r
   })

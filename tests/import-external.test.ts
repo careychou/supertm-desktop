@@ -66,6 +66,7 @@ describe('Import from GitHub Copilot', () => {
     expect(msgs[0].content).toContain('Earlier: listed files.')
     expect(msgs.slice(2)).toEqual([{ role: 'user', content: 'second ask' }, { role: 'assistant', content: 'Done.' }])
     expect(store.loadMessages(r.ids[1])).toHaveLength(4)
+    expect(store.getSession((await importExternal(store, 'copilot', root, ['s1'], 'm1', '/here')).ids[0])!.cwd).toBe('/here')
     // importing again just adds another copy: never a conflict
     expect((await importExternal(store, 'copilot', root, ['s2'], 'm1')).added).toBe(1)
   })
@@ -99,6 +100,7 @@ describe('Import from Claude Code', () => {
     expect(items.map((i) => i.t)).toEqual(['user', 'assistant', 'assistant', 'tool', 'assistant'])
     expect(items[3]).toMatchObject({ name: 'Bash', output: 'built', ok: true })
     expect(store.loadMessages(s.id)).toEqual([{ role: 'user', content: 'build it & ship' }, { role: 'assistant', content: 'Running.\n\nBuilt.\n\n(Tools used: Bash)' }])
+    expect(store.getSession((await importExternal(store, 'claude', path.join(tmp, 'claude'), [f], 'm2', '/here')).ids[0])!.cwd).toBe('/here')
   })
 })
 
