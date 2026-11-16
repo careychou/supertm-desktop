@@ -40,6 +40,8 @@ export interface Settings extends AttachLimits {
 }
 
 let dir = ''
+// Sealed secrets that couldn't be opened at load (keychain access refused after an update); saving writes them back unchanged instead of blanking them
+const unreadable = new Map<string, { apiKeyEnc?: string; clientSecretEnc?: string }>()
 /** Must be called before load/save; points settings.json at the data home. */
 export function setSettingsDir(d: string): void { dir = d }
 const file = () => path.join(dir || app.getPath('userData'), 'settings.json')
@@ -54,7 +56,19 @@ export function loadSettings(): Settings {
   const defaults: Settings = { providers: [first], defaultModel: 'anthropic/claude-sonnet-5', defaultCwd: os.homedir(), maxConcurrency: 4, maxTurnsMain: 50, maxTurnsSub: 30, reasoning: 'medium', defaultMode: 'autopilot', autoCompact: 'suggest', compactThreshold: 80000, compactKeepRecent: 2, compactModel: BRAND.defaultCompactModel, compactIdleMinutes: 5, compactHardLimit: 120000, compactMinGain: 20000, ...DEFAULT_LIMITS, requestMaxMB: 20, imageTurns: 4, pricingPath: '', dailyBudget: 0 }
   try {
     const raw = JSON.parse(fs.readFileSync(file(), 'utf8'))
-    const dec = (enc?: string) => (enc && safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(Buffer.from(enc, 'base64')) : undefined)
+    const open = (enc?: string): string | undefined => {
+      if (!enc || !safeStorage.isEncryptionAvailable()) return undefined
+      try { return safeStorage.decryptString(Buffer.from(enc, 'base64')) } catch { return undefined }
+    }
+    unreadable.clear()
+    for (const p of Array.isArray(raw.providers) ? raw.providers : []) {
+      const keep = {
+        ...(p.apiKeyEnc && open(p.apiKeyEnc) === undefined ? { apiKeyEnc: p.apiKeyEnc } : {}),
+        ...(p.clientSecretEnc && open(p.clientSecretEnc) === undefined ? { clientSecretEnc: p.clientSecretEnc } : {})
+      }
+      if (keep.apiKeyEnc || keep.clientSecretEnc) unreadable.set(p.id, keep)
+    }
+    const dec = open
     return { ...defaults, ...migrateProviders(raw, defaults.providers[0], dec) }
   } catch {
     return defaults
@@ -66,9 +80,12 @@ export function saveSettings(s: Settings): void {
   const seal = (v: string) => safeStorage.encryptString(v).toString('base64')
   const out: any = {
     ...s,
-    providers: s.providers.map(({ apiKey, clientSecret, ...p }) => (enc
-      ? { ...p, apiKeyEnc: seal(apiKey), ...(clientSecret ? { clientSecretEnc: seal(clientSecret) } : {}) }
-      : { ...p, apiKey, ...(clientSecret ? { clientSecret } : {}) }))
+    providers: s.providers.map(({ apiKey, clientSecret, ...p }) => {
+      const kept = unreadable.get(p.id) ?? {}
+      const key = apiKey ? (enc ? { apiKeyEnc: seal(apiKey) } : { apiKey }) : kept.apiKeyEnc ? { apiKeyEnc: kept.apiKeyEnc } : enc ? { apiKeyEnc: seal('') } : { apiKey: '' }
+      const secret = clientSecret ? (enc ? { clientSecretEnc: seal(clientSecret) } : { clientSecret }) : kept.clientSecretEnc ? { clientSecretEnc: kept.clientSecretEnc } : {}
+      return { ...p, ...key, ...secret }
+    })
   }
   fs.mkdirSync(path.dirname(file()), { recursive: true })
   fs.writeFileSync(file(), JSON.stringify(out, null, 2))

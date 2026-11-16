@@ -1,5 +1,11 @@
 # Release notes
 
+## 1.2.7
+
+### Fix: a refused keychain prompt no longer wipes your settings
+- After an update, macOS asks for keychain access again. If that prompt was refused or interrupted, the app could not read the saved provider keys and fell back to default settings. The next save then wiped every provider, key and setting
+- Keys it cannot read are now kept exactly as they were saved, and only the affected key shows as blank. Restart and choose **Always Allow** to get it back; there is no need to re-enter it
+
 ## 1.2.6
 
 ### Fix: Gemini 3.x tool calls on Google Vertex
