@@ -20,6 +20,9 @@ interface Props {
   onFolderMemory(path: string): void
   onCollapse(): void
   onSettings(): void
+  /** Newer app version found by the launch check. */
+  appUpdate?: string | null
+  onAppUpdate?(): void
   onUsage(): void
   usage: { today: number | null; budget: number }
   onShare(s: SessionRow): void
@@ -291,6 +294,7 @@ export function Sidebar(p: Props) {
           <UsageRing frac={p.usage.budget && p.usage.today !== null ? p.usage.today / p.usage.budget : null} />
           {p.usage.today !== null && p.usage.today > 0 && <span>{fmtUsd(p.usage.today)}</span>}
         </button>
+        {p.appUpdate && <button className="tm-badge" title={`Version ${p.appUpdate} is available. Click to review.`} onClick={p.onAppUpdate}>⬆</button>}
         <button className="icon" title="Settings" onClick={p.onSettings}>⚙</button>
       </div>
       {menu && <Menu menu={menu} onClose={() => setMenu(null)} />}

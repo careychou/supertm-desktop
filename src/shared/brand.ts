@@ -1,5 +1,6 @@
 import type { Pricing } from './usage'
 import type { MarketplaceRef } from './plugins'
+import type { UpdateSource } from './updates'
 
 // Product identity. A branded build can override these values on its own branch.
 export const BRAND = {
@@ -16,6 +17,8 @@ export const BRAND = {
   dbFile: 'supertm.db',
   /** Where Settings → About sends people for newer builds. */
   releasesUrl: 'https://github.com/careychou/supertm-desktop/releases',
+  /** Release list that Settings → About → Check for updates reads (public GitHub, no token). */
+  updates: { provider: 'github', repo: 'careychou/supertm-desktop', tagPrefix: 'v' } as UpdateSource | null,
   logo: null as string | null,
   /** Name given to the provider migrated from the old single Base URL setting. */
   defaultProviderName: 'Custom endpoint',

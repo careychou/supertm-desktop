@@ -1,3 +1,4 @@
+import type { UpdateCheck, UpdateState } from './updates'
 import type { UsageReport } from './usage'
 import type { AgentEvent, PermissionDecision, PermissionKind } from '../engine/types'
 import type { SessionRow, FolderRow, BookmarkRow } from '../main/store'
@@ -32,6 +33,8 @@ export type PushEvent =
   | { type: 'pluginsStatus'; status: PluginsStatus }
   | { type: 'pluginsLog'; folder: string; line: string }
   | { type: 'pluginsOpen'; folder: string }
+  | { type: 'update'; state: UpdateState }
+  | { type: 'updateAvailable'; version: string }
 
 export interface RegistryInfo { skills: Array<{ name: string; description: string; source: string }>; agents: Array<{ name: string; description: string; source: string }>; warnings: string[] }
 
@@ -80,6 +83,15 @@ export interface DeskApi {
   /** Lists the models of an unsaved provider entry (Settings → Model providers → Test). */
   testProvider(p: ProviderEntry): Promise<{ models: string[]; error?: string }>
   appInfo(): Promise<AppInfo>
+  /** Lists releases newer than this build (Settings → About). */
+  checkUpdates(): Promise<UpdateCheck>
+  updateState(): Promise<UpdateState>
+  /** Downloads and verifies a release's macOS zip; progress arrives as `update` push events. */
+  downloadUpdate(version: string): Promise<{ ok: boolean; error?: string }>
+  cancelUpdate(): Promise<boolean>
+  /** Quits, replaces this app with the downloaded one and reopens it. */
+  installUpdate(): Promise<{ ok: boolean; error?: string }>
+  openRelease(url: string): Promise<void>
   pickFolder(opts?: { defaultPath?: string; title?: string; buttonLabel?: string }): Promise<string | null>
   pickFile(opts?: { title?: string; extensions?: string[] }): Promise<string | null>
   getSettings(): Promise<Settings>

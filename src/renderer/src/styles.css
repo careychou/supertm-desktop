@@ -496,3 +496,28 @@ button.danger { color: var(--fail); }
 .tts-hint button { border: 1px solid var(--border, #ddd); background: transparent; border-radius: 999px; padding: 1px 8px; font-size: 12px; cursor: pointer; color: inherit; }
 .tts-hint button:hover { background: var(--hover, #f2f2f2); }
 .tts-hint code { font-size: 11px; }
+
+/* ⤢ Expand: dialogs fill most of the window, and their long lists grow with them */
+.expand-toggle { margin-left: auto; border: 0 !important; background: none; color: var(--muted); font-size: 16px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+.expand-toggle:hover { background: var(--hover); color: var(--text); }
+.dialog-head { display: flex; align-items: center; }
+.modal.expanded, .modal.settings.expanded, .modal.sync-dialog.expanded { width: 96vw; height: 94vh; max-height: 94vh; box-sizing: border-box; }
+.modal.expanded .sync-scroll, .modal.expanded .turn-pick.tall { max-height: 74vh; }
+.modal.expanded .tm-plugins { max-height: 74vh; }
+.modal.expanded .tm-log { max-height: 50vh; }
+
+/* Settings → About → Updates */
+.updates { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.updates-head { display: flex; align-items: center; gap: 10px; }
+.updates .err { padding: 0; border: 0; background: none; }
+.update-action { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.update-action progress { width: 200px; }
+.release-list { border: 1px solid var(--line); border-radius: 8px; max-height: 40vh; overflow-y: auto; }
+.modal.expanded .release-list { max-height: 60vh; }
+.release { border-bottom: 1px solid var(--line); padding: 8px 12px; }
+.release:last-child { border-bottom: 0; }
+.release summary { cursor: pointer; display: flex; align-items: center; gap: 10px; }
+.release summary button.link { margin-left: auto; }
+.release-notes { font-size: 13px; padding: 4px 0 2px 14px; }
+.modal.settings { width: min(900px, 94vw); }
+.modal.settings .tabs button { white-space: nowrap; }

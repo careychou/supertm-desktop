@@ -1,5 +1,15 @@
 # Release notes
 
+## 1.2.9
+
+### Check for updates from inside the app
+- **Settings → About → Updates** lists every newer release on GitHub with its release notes, so you can decide whether to upgrade
+- **Download** fetches the macOS zip and checks its version; **Restart to install** replaces the app in Applications and reopens it. Chats, settings and keys are kept
+- About 15 seconds after launch the app checks quietly; a **⬆** next to ⚙ in the sidebar means a newer release is out
+
+### Expandable Settings window
+- The **⤢** button in Settings (and in the Export sessions dialog) enlarges the dialog to fill most of the window, so long lists are easier to read. The choice is remembered
+
 ## 1.2.8
 
 ### Text-to-speech models (Google Vertex)

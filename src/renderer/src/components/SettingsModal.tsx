@@ -4,15 +4,18 @@ import { bareModel } from '../../../shared/providers'
 import { BRAND } from '../../../shared/brand'
 import { ProvidersTab } from './ProvidersTab'
 import { SyncTab } from './SyncTab'
+import { UpdatesPanel } from './UpdatesPanel'
+import { useExpand } from '../hooks/useExpand'
 import { useEscape } from '../hooks/useEscape'
 
 type Tab = 'providers' | 'general' | 'compaction' | 'skills' | 'sync' | 'about'
 
-export function SettingsModal({ cwd, folders, onClose }: { cwd: string; folders: string[]; onClose(): void }) {
+export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: string; folders: string[]; onClose(): void; initialTab?: Tab }) {
   const [s, setS] = useState<Settings | null>(null)
   const [groups, setGroups] = useState<ModelGroup[]>([])
   const [health, setHealth] = useState('')
-  const [tab, setTab] = useState<Tab>('providers')
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'providers')
+  const [big, toggleBig] = useExpand('settings')
   useEffect(() => {
     void window.desk.getSettings().then(setS)
     void window.desk.listModels().then((r) => setGroups(r.groups ?? []))
@@ -30,9 +33,10 @@ export function SettingsModal({ cwd, folders, onClose }: { cwd: string; folders:
   const compactKnown = !s.compactModel || groups.some((g) => g.models.includes(s.compactModel))
   return (
     <div className="modal-bg" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className={`modal settings${big ? ' expanded' : ''}`} onClick={(e) => e.stopPropagation()}>
         <div className="tabs">
           {tabs.map(([k, label]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{label}</button>)}
+          <button className="expand-toggle" onClick={toggleBig} title={big ? 'Shrink window' : 'Expand window'}>{big ? '⤡' : '⤢'}</button>
         </div>
         {tab === 'providers' && <ProvidersTab s={s} setS={setS} />}
         {tab === 'general' && (
@@ -146,9 +150,10 @@ function AboutTab({ onClose }: { onClose(): void }) {
       <table className="about-table"><tbody>
         {rows.map(([k, v]) => <tr key={k}><th>{k}</th><td><code>{v}</code></td></tr>)}
       </tbody></table>
+      <UpdatesPanel />
       <div className="row-actions modal-foot">
         <button onClick={() => { void navigator.clipboard.writeText(text); setCopied(true) }}>{copied ? '✓ Copied' : 'Copy version info'}</button>
-        {BRAND.releasesUrl && <a href={BRAND.releasesUrl} target="_blank" rel="noreferrer">Check for newer releases ↗</a>}
+        {BRAND.releasesUrl && <a href={BRAND.releasesUrl} target="_blank" rel="noreferrer">All releases ↗</a>}
         <div className="spacer" />
         <button onClick={onClose}>Close</button>
       </div>

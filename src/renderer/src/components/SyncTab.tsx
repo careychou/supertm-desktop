@@ -3,6 +3,7 @@ import { SessionTree, type TreeRow } from './SessionTree'
 import { ageDiff, type ImportSource, type SyncCandidate, type SyncChoice, type SyncManifest } from '../../../shared/sync'
 import { BRAND } from '../../../shared/brand'
 import { useEscape } from '../hooks/useEscape'
+import { useExpand } from '../hooks/useExpand'
 
 const KEY = 'syncDir'
 const when = (t: number) => new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
@@ -26,6 +27,7 @@ function ExportDialog({ dir, onClose, onDone }: { dir: string; onClose(): void; 
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [big, toggleBig] = useExpand('export')
   useEscape(onClose)
   useEffect(() => {
     void window.desk.listSessions().then((l) => {
@@ -43,8 +45,8 @@ function ExportDialog({ dir, onClose, onDone }: { dir: string; onClose(): void; 
   }
   return (
     <div className="modal-bg" onClick={onClose}>
-      <div className="modal sync-dialog" onClick={(e) => e.stopPropagation()}>
-        <h3>Export sessions</h3>
+      <div className={`modal sync-dialog${big ? ' expanded' : ''}`} onClick={(e) => e.stopPropagation()}>
+        <div className="dialog-head"><h3>Export sessions</h3><button className="expand-toggle" onClick={toggleBig} title={big ? 'Shrink window' : 'Expand window'}>{big ? '⤡' : '⤢'}</button></div>
         <div className="muted small">To <b title={dir}>{dir}</b>. This replaces an earlier export in that folder. Every session is selected; uncheck the ones to leave out.</div>
         {rows ? <SessionTree rows={rows} picked={picked} setPicked={setPicked} /> : <div className="muted">Loading…</div>}
         <div className="row-actions modal-foot">

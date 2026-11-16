@@ -235,7 +235,17 @@ Imported chats keep the full transcript, including tool calls and results. The m
 
 ## 8. Which version am I running?
 
-Open **Settings (⚙) → About**. It shows the app version, the build (git commit and build date), the Electron, Chromium and Node.js versions, macOS, and the data folder. **Copy version info** puts all of it on the clipboard for a bug report, and **Check for newer releases** opens the Releases page. The macOS menu **SuperTM Desktop → About SuperTM Desktop** shows the version and build too.
+Open **Settings (⚙) → About**. It shows the app version, the build (git commit and build date), the Electron, Chromium and Node.js versions, macOS, and the data folder. **Copy version info** puts all of it on the clipboard for a bug report. The macOS menu **SuperTM Desktop → About SuperTM Desktop** shows the version and build too.
+
+### Updating to a newer release
+
+The **Updates** section under About checks the GitHub release list each time you open it, or when you click **Check for updates**. Every release newer than yours is listed, newest first, with its release notes, so you can decide whether to upgrade.
+
+1. Click **Download *version***. The app downloads the macOS zip and checks that it is the version you picked.
+2. Click **Restart to install *version***. The app quits, replaces itself in Applications, and reopens. Running chats stop; your chats, settings and keys are kept.
+3. macOS asks once for keychain access. Choose **Always Allow**, or your saved keys show as blank until you do.
+
+The app also checks quietly about 15 seconds after launch. If a newer release exists, a **⬆** appears next to ⚙ in the sidebar; click it to open About. If the app can't replace itself (for example, it is not in a folder you can write to), About links to the release page so you can download the DMG instead.
 
 ## 9. Keyboard shortcuts
 

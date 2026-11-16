@@ -24,6 +24,7 @@ import type { ExternalSource } from '../shared/sync'
 import { externalDefaults, importExternal, scanClaude, scanCopilot, copilotRoot } from './import-external'
 import { azureLogin, azureUsageProvider, cancelAzureLogin, getAzureUsage, getLocalUsage, getProjectUsage, loadPricing, usageProvider } from './usage'
 import { registerPlugins } from './plugins'
+import { registerUpdates } from './updates'
 import { autoCompactDecision, estimateTokens, keepLastPlan, splitHistoryTurns, type CompactPlan } from '../engine/compact'
 
 // GUI apps launched from Finder get a minimal PATH; give shell tools a usable one.
@@ -395,6 +396,7 @@ app.whenReady().then(() => {
   store = new Store(dataHome)
   registerIpc()
   plugins = registerPlugins(ipcMain, { dataHome, push, folders: () => store.listFolders().map((f) => f.path) })
+  registerUpdates(ipcMain, { push, getToken: () => undefined }).checkInBackground()
   createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
 })

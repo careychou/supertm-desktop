@@ -62,6 +62,8 @@ export function App() {
   const [perms, setPerms] = useState<PermissionReq[]>([])
   const [asks, setAsks] = useState<AskReq[]>([])
   const [showSettings, setShowSettings] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<'about' | undefined>()
+  const [appUpdate, setAppUpdate] = useState<string | null>(null)
   const [showUsage, setShowUsage] = useState(false)
   const [usage, setUsage] = useState<{ today: number | null; budget: number }>({ today: null, budget: 0 })
   const refreshUsage = useCallback(async () => {
@@ -143,6 +145,8 @@ export function App() {
         return
       }
       if (p.type === 'pluginsLog') return
+      if (p.type === 'update') return
+      if (p.type === 'updateAvailable') { setAppUpdate(p.version); return }
       if (p.type === 'busy') setBusyIds((prev) => { const n = new Set(prev); p.busy ? n.add(p.sessionId) : n.delete(p.sessionId); return n })
       const mine = p.sessionId === currentRef.current?.id
       if (p.type === 'agent' && (p.event.kind === 'user_input' || p.event.kind === 'queue_cleared')) {
@@ -303,7 +307,8 @@ export function App() {
       <div className="side-slot" aria-hidden={!sidebar} inert={!sidebar || undefined}>
         <Sidebar folders={folders} sessions={sessions} bookmarks={bookmarks} onCompact={openCompact} currentId={current?.id ?? null} busyIds={busyIds}
           onOpen={open} onNewChat={newChat} onDelete={del} onAddFolder={addFolder} onRemoveFolder={removeFolder} onFolderMemory={(p) => setMemEdit({ kind: 'folder', cwd: p })}
-          onCollapse={() => setSidebar(false)} onSettings={() => setShowSettings(true)} onUsage={() => setShowUsage(true)} usage={usage}
+          onCollapse={() => setSidebar(false)} onSettings={() => { setSettingsTab(undefined); setShowSettings(true) }}
+          appUpdate={appUpdate} onAppUpdate={() => { setSettingsTab('about'); setShowSettings(true) }} onUsage={() => setShowUsage(true)} usage={usage}
           onShare={async (s) => { await persistCurrent(); setSharing(s) }}
           onPlugins={(f) => setPluginsFor(f)} pluginUpdates={plUpdates} />
       </div>
@@ -384,7 +389,7 @@ export function App() {
         )}
       </main>
       {showUsage && <UsageModal onClose={() => setShowUsage(false)} onOpenChat={(id) => void open(id)} />}
-      {showSettings && <SettingsModal cwd={cwd} folders={folders.map((f) => f.path)} onClose={() => { setShowSettings(false); void refreshModels(); void refreshUsage(); void window.desk.getSettings().then((s) => { setDefaultEffort(s.reasoning); setDefaultMode(s.defaultMode); setCompactCfg({ mode: s.autoCompact, threshold: s.compactThreshold, keep: s.compactKeepRecent }) }) }} />}
+      {showSettings && <SettingsModal initialTab={settingsTab} cwd={cwd} folders={folders.map((f) => f.path)} onClose={() => { setShowSettings(false); void refreshModels(); void refreshUsage(); void window.desk.getSettings().then((s) => { setDefaultEffort(s.reasoning); setDefaultMode(s.defaultMode); setCompactCfg({ mode: s.autoCompact, threshold: s.compactThreshold, keep: s.compactKeepRecent }) }) }} />}
       {compacting && <CompactModal session={compacting} keepRecentDefault={compactCfg.keep} onClose={() => setCompacting(null)}
         onDone={(m) => { setCompacting(null); flash(m) }} />}
       {pluginsFor && <PluginsModal folder={pluginsFor} onClose={() => { setPluginsFor(null); refreshReg() }} />}
