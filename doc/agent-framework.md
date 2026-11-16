@@ -235,6 +235,8 @@ The mode is stored per chat and can be changed mid-run; the gate reads it per re
 
 This mirrors GitHub Copilot's behavior: you can keep typing while the agent works.
 
+> **Deep dive:** [prompt-queue.md](prompt-queue.md) explains in detail how queued prompts wait for tools and parallel sub-agents, the step boundary they enter at, background notifications, races, stop and failure.
+
 **Design: queued prompts join the *same* conversation at the next safe point.** There is no second agent and nothing to reconcile.
 
 ```mermaid
@@ -264,7 +266,7 @@ Rules:
 - **Last-moment race:** the outer driver is `do { runLoop } while (queue.length)`. If a prompt arrives after the loop's last drain but before the run returns, another run starts immediately, so a prompt is never stranded.
 - **`unqueue(qid)`:** removes a queued prompt before it is injected and returns `true`; the UI puts the text back in the composer. If it already reached the model it returns `false`.
 - **UI sync:** a chip disappears on `user_input{qid}` (and the prompt appears in the thread at the position it entered) or on `queue_cleared{qids}`.
-- **Failure / cancel:** the queue is dropped (`queue_cleared`), because a prompt written for a different state may be wrong after an interruption. The UI restores nothing automatically.
+- **Failure / cancel:** the queue is dropped (`queue_cleared`), because a prompt written for a different state may be wrong after an interruption. The UI puts the dropped prompts' text back in the message box so you can review and resend it.
 - **Attachments** ride along with queued prompts (content parts are built before queueing).
 - **Why not a second agent?** A forked agent would need its own copy of the context, its tool results could conflict with the first one's file edits, and the user's intent ("also...") usually refers to the work in progress. A single conversation is simpler and cheaper.
 - Compaction is refused while a chat is busy.

@@ -6,6 +6,7 @@ How SuperTM Desktop works inside. Start here, then read the deep dives.
 |---|---|
 | [tutorial.md](tutorial.md) | **Start here.** Illustrated walkthrough: working folders, providers (Vertex + Azure examples), chatting, skills per folder, compaction, AI usage, Sync sessions export/import |
 | [agent-framework.md](agent-framework.md) | Agent loop, sub-agents, context passing, request queue, tool calls, permissions, cancellation, system prompt, event model |
+| [prompt-queue.md](prompt-queue.md) | Sending while the agent works: the per-chat prompt queue, the step boundary where prompts join, how it syncs with parallel tools, sub-agents and background notifications, races, stop and failure |
 | [memory-compaction.md](memory-compaction.md) | How long chats are compacted: turns, plans, clustering, summarization, incremental merge, turn map, compaction model, cache-aware auto-compact |
 | [algorithms-and-internals.md](algorithms-and-internals.md) | Model providers and routing (custom endpoint, Azure OpenAI, native Google Vertex AI with service-account auth), adapter and streaming, attachment compression and request budget, persistence and forks, ordering, memory export, usage and cost, shell/sql/web_fetch tools, settings |
 | [features.md](features.md) | Feature reference: every feature in detail (moved out of the top-level README) |
