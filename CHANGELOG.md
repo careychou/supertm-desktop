@@ -1,5 +1,12 @@
 # Release notes
 
+## 1.2.2
+
+### New: About page shows which version you are running
+- **Settings → About**: app version, build (git commit and build date), Electron, Chromium and Node.js versions, macOS and the data folder
+- **Copy version info** for bug reports, and **Check for newer releases** opens the Releases page
+- The macOS menu **SuperTM Desktop → About SuperTM Desktop** now shows the version and build too
+
 ## 1.2.1
 
 ### Fix: imports no longer add a duplicate working folder

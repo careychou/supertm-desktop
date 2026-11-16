@@ -464,3 +464,12 @@ button.danger { color: var(--fail); }
 .pl-tag { font-size: 11px; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: #dafbe1; color: #1a7f37; }
 .pl-tag.up { background: #fbefff; color: #8250df; }
 .pl-search { width: 100%; }
+
+/* Settings → About */
+.about-head { display: flex; align-items: center; gap: 14px; margin: 6px 0 16px; }
+.about-head img { height: 34px; }
+.about-name { font-size: 18px; font-weight: 600; }
+.about-ver { color: var(--muted, #666); margin-top: 2px; }
+.about-table { border-collapse: collapse; width: 100%; }
+.about-table th { text-align: left; font-weight: 500; color: var(--muted, #666); padding: 5px 16px 5px 0; white-space: nowrap; width: 1%; }
+.about-table td { padding: 5px 0; word-break: break-all; }

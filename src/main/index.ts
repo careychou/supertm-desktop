@@ -11,7 +11,7 @@ import { orphanToPrimary, rehomeModel, type ProviderEntry } from '../shared/prov
 import { COMPACT_ID, Session } from '../engine/engine'
 import { loadRegistry } from '../engine/registry/registry'
 import type { Message, PermissionDecision } from '../engine/types'
-import type { CompactItem, PushEvent } from '../shared/api'
+import type { AppInfo, CompactItem, PushEvent } from '../shared/api'
 import { BRAND } from '../shared/brand'
 import { parseMemory, serializeMemory, type Memory } from '../shared/memory'
 import { insertBeforeTurn, liveTurnMap, orderRows, reorderIds, sliceItemsAtTurn, sliceMessagesAtTurn } from '../shared/fork'
@@ -280,6 +280,11 @@ function registerIpc() {
     const [g] = await router([{ ...p, enabled: true }]).listGroups(true)
     return { models: g?.models ?? [], error: g?.error }
   })
+  ipcMain.handle('appInfo', (): AppInfo => ({
+    name: BRAND.title, version: app.getVersion(), commit: typeof __BUILD_COMMIT__ === 'string' ? __BUILD_COMMIT__ : '',
+    builtAt: typeof __BUILD_DATE__ === 'string' ? __BUILD_DATE__ : '', electron: process.versions.electron, chrome: process.versions.chrome,
+    node: process.versions.node, os: `macOS ${process.getSystemVersion()}`, arch: process.arch, dataHome
+  }))
   ipcMain.handle('pickFolder', async (_e, opts?: { defaultPath?: string; title?: string; buttonLabel?: string }) => {
     const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory', 'createDirectory', 'showHiddenFiles'], defaultPath: opts?.defaultPath || undefined, title: opts?.title, buttonLabel: opts?.buttonLabel })
     return r.canceled ? null : r.filePaths[0]
@@ -363,6 +368,10 @@ const dataHome = resolveDataHome({ env: process.env, home: os.homedir(), profile
 
 app.whenReady().then(() => {
   app.setName(BRAND.name)
+  app.setAboutPanelOptions({
+    applicationName: BRAND.title, applicationVersion: app.getVersion(),
+    version: [typeof __BUILD_COMMIT__ === 'string' && __BUILD_COMMIT__, typeof __BUILD_DATE__ === 'string' && __BUILD_DATE__.slice(0, 10)].filter(Boolean).join(' · ')
+  })
   if (!profileDir) {
     try { const moved = migrateDataHome(legacyDir, dataHome); if (moved.length) console.log(`Copied ${moved.join(', ')} from ${legacyDir} to ${dataHome}`) }
     catch (e) { console.error('Data migration failed; starting with the new folder', e) }

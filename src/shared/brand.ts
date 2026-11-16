@@ -14,6 +14,8 @@ export const BRAND = {
   // Env vars: <envPrefix>_HOME, <envPrefix>_BASE_URL, <envPrefix>_API_KEY.
   envPrefix: 'SUPERTM',
   dbFile: 'supertm.db',
+  /** Where Settings → About sends people for newer builds. */
+  releasesUrl: 'https://github.com/careychou/supertm-desktop/releases',
   logo: null as string | null,
   /** Name given to the provider migrated from the old single Base URL setting. */
   defaultProviderName: 'Custom endpoint',

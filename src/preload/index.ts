@@ -41,6 +41,7 @@ const api: DeskApi = {
   respondAsk: inv('respondAsk') as any,
   listModels: inv('listModels') as any,
   testProvider: inv('testProvider') as any,
+  appInfo: inv('appInfo') as any,
   pickFolder: inv('pickFolder') as any,
   pickFile: inv('pickFile') as any,
   getSettings: inv('getSettings') as any,

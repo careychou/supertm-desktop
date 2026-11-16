@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import type { ModelGroup, RegistryInfo, Settings } from '../../../shared/api'
+import type { AppInfo, ModelGroup, RegistryInfo, Settings } from '../../../shared/api'
 import { bareModel } from '../../../shared/providers'
 import { BRAND } from '../../../shared/brand'
 import { ProvidersTab } from './ProvidersTab'
 import { SyncTab } from './SyncTab'
 import { useEscape } from '../hooks/useEscape'
 
-type Tab = 'providers' | 'general' | 'compaction' | 'skills' | 'sync'
+type Tab = 'providers' | 'general' | 'compaction' | 'skills' | 'sync' | 'about'
 
 export function SettingsModal({ cwd, folders, onClose }: { cwd: string; folders: string[]; onClose(): void }) {
   const [s, setS] = useState<Settings | null>(null)
@@ -26,7 +26,7 @@ export function SettingsModal({ cwd, folders, onClose }: { cwd: string; folders:
     setGroups(r.groups ?? [])
     setHealth(r.error ? `✗ ${r.error}` : `✓ ${r.models.length} models from ${r.groups.filter((g) => !g.error).length} provider(s)`)
   }
-  const tabs: Array<[Tab, string]> = [['providers', 'Model providers'], ['general', 'General'], ['compaction', 'Memory compaction'], ['skills', 'Skills & agents'], ['sync', 'Sync sessions']]
+  const tabs: Array<[Tab, string]> = [['providers', 'Model providers'], ['general', 'General'], ['compaction', 'Memory compaction'], ['skills', 'Skills & agents'], ['sync', 'Sync sessions'], ['about', 'About']]
   const compactKnown = !s.compactModel || groups.some((g) => g.models.includes(s.compactModel))
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -111,7 +111,8 @@ export function SettingsModal({ cwd, folders, onClose }: { cwd: string; folders:
           <SkillsTab cwd={cwd} folders={folders} />
         )}
         {tab === 'sync' && <SyncTab />}
-        {tab !== 'skills' && tab !== 'sync' && (
+        {tab === 'about' && <AboutTab onClose={onClose} />}
+        {tab !== 'skills' && tab !== 'sync' && tab !== 'about' && (
           <div className="row-actions modal-foot">
             <button onClick={testAll}>Test connection</button>
             <span className="muted small">{health}</span>
@@ -120,6 +121,36 @@ export function SettingsModal({ cwd, folders, onClose }: { cwd: string; folders:
             <button className="primary" onClick={async () => { await window.desk.saveSettings(s); onClose() }}>Save</button>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function AboutTab({ onClose }: { onClose(): void }) {
+  const [a, setA] = useState<AppInfo | null>(null)
+  const [copied, setCopied] = useState(false)
+  useEffect(() => { void window.desk.appInfo().then(setA) }, [])
+  if (!a) return null
+  const built = a.builtAt ? new Date(a.builtAt).toLocaleString() : ''
+  const rows: Array<[string, string]> = [
+    ['Build', [a.commit, built].filter(Boolean).join(' · ') || 'development'],
+    ['Electron', a.electron], ['Chromium', a.chrome], ['Node.js', a.node], ['System', `${a.os} (${a.arch})`], ['Data folder', a.dataHome]
+  ]
+  const text = `${a.name} ${a.version}\n` + rows.map(([k, v]) => `${k}: ${v}`).join('\n')
+  return (
+    <div className="about">
+      <div className="about-head">
+        {BRAND.logo && <img src={BRAND.logo} alt="" />}
+        <div><div className="about-name">{a.name}</div><div className="about-ver">Version {a.version}</div></div>
+      </div>
+      <table className="about-table"><tbody>
+        {rows.map(([k, v]) => <tr key={k}><th>{k}</th><td><code>{v}</code></td></tr>)}
+      </tbody></table>
+      <div className="row-actions modal-foot">
+        <button onClick={() => { void navigator.clipboard.writeText(text); setCopied(true) }}>{copied ? '✓ Copied' : 'Copy version info'}</button>
+        {BRAND.releasesUrl && <a href={BRAND.releasesUrl} target="_blank" rel="noreferrer">Check for newer releases ↗</a>}
+        <div className="spacer" />
+        <button onClick={onClose}>Close</button>
       </div>
     </div>
   )

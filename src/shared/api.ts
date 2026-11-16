@@ -79,6 +79,7 @@ export interface DeskApi {
   listModels(): Promise<{ models: string[]; groups: ModelGroup[]; error?: string }>
   /** Lists the models of an unsaved provider entry (Settings → Model providers → Test). */
   testProvider(p: ProviderEntry): Promise<{ models: string[]; error?: string }>
+  appInfo(): Promise<AppInfo>
   pickFolder(opts?: { defaultPath?: string; title?: string; buttonLabel?: string }): Promise<string | null>
   pickFile(opts?: { title?: string; extensions?: string[] }): Promise<string | null>
   getSettings(): Promise<Settings>
@@ -115,4 +116,18 @@ export interface PluginsApi {
   uninstall(folder: string, name: string): Promise<PluginResult>
   checkUpdates(folder: string): Promise<PluginUpdates | undefined>
   updateAll(folder: string): Promise<PluginResult>
+}
+
+/** Settings → About and the macOS About panel. */
+export interface AppInfo {
+  name: string
+  version: string
+  commit: string
+  builtAt: string
+  electron: string
+  chrome: string
+  node: string
+  os: string
+  arch: string
+  dataHome: string
 }

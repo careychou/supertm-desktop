@@ -35,6 +35,7 @@ Everything SuperTM Desktop does, in detail. New to the app? Start with the [tuto
 - **Import from GitHub Copilot and Claude Code** — the same tab reads a Copilot session-state folder (`~/.copilot`) or Claude Code projects (`~/.claude/projects`), lists their chats by folder, and imports the ones you pick, into the working folder you choose, as new chats with the full transcript, ready to continue on your own models.
 - **Bookmarks** — a pinned section at the top of the sidebar with nestable folders.
 - **Resizable sidebar** — drag its edge to resize (double-click resets), drag it past the minimum width or press **⌘B** to hide it, and use ◧ or ⌘B to show it again. The width and the hidden/shown state are remembered.
+- **About** — Settings → *About* (and the macOS app menu's *About*) shows the version, build commit and date, runtime versions and data folder, with **Copy version info** and a link to newer releases.
 
 ## Attachments
 - **Paste, drop or 📎** — paste screenshots/files (⌘V), drag files anywhere onto the window, or pick them with 📎. Chips show the size before → after and estimated tokens.

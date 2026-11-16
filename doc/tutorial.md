@@ -9,7 +9,8 @@ A short tour of SuperTM Desktop, from first launch to moving chats between Macs.
 5. [Keep long chats small: memory compaction](#5-keep-long-chats-small-memory-compaction)
 6. [See what you spend: AI usage](#6-see-what-you-spend-ai-usage)
 7. [Move chats between Macs: Sync sessions](#7-move-chats-between-macs-sync-sessions)
-8. [Keyboard shortcuts](#8-keyboard-shortcuts)
+8. [Which version am I running?](#8-which-version-am-i-running)
+9. [Keyboard shortcuts](#9-keyboard-shortcuts)
 
 ---
 
@@ -226,7 +227,11 @@ Then:
 
 Imported chats keep the full transcript, including tool calls and results. The model continues from a text-only version of the history.
 
-## 8. Keyboard shortcuts
+## 8. Which version am I running?
+
+Open **Settings (⚙) → About**. It shows the app version, the build (git commit and build date), the Electron, Chromium and Node.js versions, macOS, and the data folder. **Copy version info** puts all of it on the clipboard for a bug report, and **Check for newer releases** opens the Releases page. The macOS menu **SuperTM Desktop → About SuperTM Desktop** shows the version and build too.
+
+## 9. Keyboard shortcuts
 
 | Keys | Action |
 |---|---|
