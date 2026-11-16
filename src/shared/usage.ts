@@ -22,6 +22,8 @@ export interface UsageReport {
   /** Azure: why billed $ is missing (e.g. no Cost Management Reader role). */
   billedError?: string
   error?: string
+  /** Azure: the Azure CLI is installed but not signed in (or its sign-in expired); the UI offers `az login`. */
+  needsAzLogin?: boolean
 }
 
 /** Local ledger row: prompt tokens INCLUDE cached + cache-write tokens (OpenAI convention). */

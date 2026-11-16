@@ -1,5 +1,12 @@
 # Release notes
 
+## 1.2.4
+
+### Fix: AI usage → Azure resource asks you to sign in instead of failing
+- When the Azure CLI is installed but not signed in (or its sign-in expired), the tab now shows **Sign in to Azure** instead of an `az account get-access-token failed` error
+- Click it to run `az login` (using the provider's tenant, if set) and finish Microsoft sign-in in the browser; the tab reloads with your usage and cost. **Cancel** stops a sign-in you don't want to finish
+- Tokens stay in the Azure CLI's cache and are never shown. A missing CLI or a missing role still gets its own message
+
 ## 1.2.3
 
 ### New: jump between turns in long chats

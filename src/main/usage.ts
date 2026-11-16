@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { execFile } from 'node:child_process'
+import { execFile, type ChildProcess } from 'node:child_process'
 import { azureCostRows, azureMonitorRows, azureReport, localDay, localReport, monitoringRows, projectReport, type Pricing, type UsageReport } from '../shared/usage'
 import type { ProviderEntry } from '../shared/providers'
 import { VertexAuth } from '../engine/adapter/vertex-auth'
@@ -106,11 +106,44 @@ export async function azureArmToken(p: ProviderEntry, f: typeof fetch = fetch): 
   const args = ['account', 'get-access-token', '--resource', ARM, '--query', 'accessToken', '-o', 'tsv']
   if (p.tenantId?.trim()) args.push('--tenant', p.tenantId.trim())
   return new Promise((resolve, reject) => execFile('az', args, { timeout: 30000 }, (err, out, errOut) => {
-    if (err) reject(new Error((err as any).code === 'ENOENT'
-      ? 'Azure CLI (az) not found. Install it and run `az login`, or set a service principal on the Azure provider.'
-      : `az account get-access-token failed — run \`az login\`.\n${String(errOut).split('\n').filter((l) => !/Warning/.test(l)).join('\n').trim().slice(0, 300)}`))
-    else resolve(out.trim())
+    if (!err) return resolve(out.trim())
+    if ((err as any).code === 'ENOENT') return reject(new Error('Azure CLI (az) not found. Install it and run `az login`, or set a service principal on the Azure provider.'))
+    const e: any = new Error(`Sign in to Azure to read usage for this resource.\n${azErr(errOut)}`.trim())
+    e.needsAzLogin = true
+    reject(e)
   }))
+}
+
+const azErr = (errOut: unknown) => String(errOut ?? '').split('\n').filter((l) => l.trim() && !/Warning/.test(l)).join('\n').trim().slice(0, 300)
+
+let azLoginProc: ChildProcess | null = null
+/** Runs `az login` (browser sign-in) for the Azure usage provider's tenant. Tokens stay in the Azure CLI cache; nothing is returned. */
+export function azureLogin(p: ProviderEntry | null): Promise<{ ok: boolean; error?: string; cancelled?: boolean }> {
+  if (azLoginProc) return Promise.resolve({ ok: false, error: 'An Azure sign-in is already in progress — finish it in the browser.' })
+  const args = ['login', '--only-show-errors', '-o', 'none']
+  if (p?.tenantId?.trim()) args.push('--tenant', p.tenantId.trim())
+  // Non-interactive: skip the subscription picker (it would wait on stdin) and keep the CLI's default subscription.
+  const env = { ...process.env, AZURE_CORE_LOGIN_EXPERIENCE_V2: 'off' }
+  return new Promise((resolve) => {
+    let cancelled = false
+    const proc = execFile('az', args, { timeout: 300_000, env }, (err, _out, errOut) => {
+      azLoginProc = null
+      if (!err) return resolve({ ok: true })
+      if (cancelled) return resolve({ ok: false, cancelled: true })
+      if ((err as any).code === 'ENOENT') return resolve({ ok: false, error: 'Azure CLI (az) not found. Install it first.' })
+      if ((err as any).killed) return resolve({ ok: false, error: 'Sign-in timed out after 5 minutes. Try again.' })
+      resolve({ ok: false, error: azErr(errOut) || String(err.message) })
+    })
+    proc.stdin?.end()
+    ;(proc as any).cancel = () => { cancelled = true; proc.kill() }
+    azLoginProc = proc
+  })
+}
+/** Stops a pending `az login` (the user closed the browser or changed their mind). */
+export function cancelAzureLogin(): boolean {
+  if (!azLoginProc) return false
+  ;(azLoginProc as any).cancel()
+  return true
 }
 
 async function arm(f: typeof fetch, token: string, url: string, init?: { method?: string; body?: unknown }): Promise<any> {
@@ -196,6 +229,6 @@ export async function getAzureUsage(providers: ProviderEntry[], days: number, pr
     }
     return azureReport({ rows, billed, billedError, start: start.toISOString(), end: end.toISOString(), resource, warnings: [...warnings, ...w] }, loadPricing(pricingPath, dataHome).pricing)
   } catch (e: any) {
-    return empty(String(e?.message ?? e))
+    return { ...empty(String(e?.message ?? e)), ...(e?.needsAzLogin ? { needsAzLogin: true } : {}) }
   }
 }

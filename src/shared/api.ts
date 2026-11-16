@@ -87,6 +87,9 @@ export interface DeskApi {
   getProjectUsage(days: number): Promise<UsageReport>
   getAzureUsage(days: number): Promise<UsageReport>
   usageInfo(): Promise<{ project: string | null; azure: string | null; pricing: string | null }>
+  /** Runs `az login` (browser sign-in) so the Azure usage tab can read Azure Monitor / Cost Management. */
+  azureLogin(): Promise<{ ok: boolean; error?: string; cancelled?: boolean }>
+  cancelAzureLogin(): Promise<boolean>
   saveSettings(s: Settings): Promise<void>
   /** Sync sessions: copy the session database (every chat, or just `ids`) plus a manifest into a folder. */
   syncExport(dir: string, ids?: string[]): Promise<SyncManifest>

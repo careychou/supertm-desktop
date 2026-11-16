@@ -20,7 +20,7 @@ import type { Attachment } from '../engine/content'
 import { exportSessions, importSessions, resolveSyncFile, scanSessions } from './sync'
 import type { ExternalSource } from '../shared/sync'
 import { externalDefaults, importExternal, scanClaude, scanCopilot, copilotRoot } from './import-external'
-import { azureUsageProvider, getAzureUsage, getLocalUsage, getProjectUsage, loadPricing, usageProvider } from './usage'
+import { azureLogin, azureUsageProvider, cancelAzureLogin, getAzureUsage, getLocalUsage, getProjectUsage, loadPricing, usageProvider } from './usage'
 import { registerPlugins } from './plugins'
 import { autoCompactDecision, estimateTokens, keepLastPlan, splitHistoryTurns, type CompactPlan } from '../engine/compact'
 
@@ -297,6 +297,8 @@ function registerIpc() {
   ipcMain.handle('getUsage', (_e, days: number) => getLocalUsage(store, days, settings.pricingPath, dataHome))
   ipcMain.handle('getProjectUsage', (_e, days: number) => getProjectUsage(settings.providers, days, settings.pricingPath, dataHome))
   ipcMain.handle('getAzureUsage', (_e, days: number) => getAzureUsage(settings.providers, days, settings.pricingPath, dataHome))
+  ipcMain.handle('azureLogin', () => azureLogin(azureUsageProvider(settings.providers)))
+  ipcMain.handle('cancelAzureLogin', () => cancelAzureLogin())
   ipcMain.handle('usageInfo', () => ({ project: usageProvider(settings.providers)?.project ?? null, azure: azureUsageProvider(settings.providers)?.baseUrl ?? null, pricing: loadPricing(settings.pricingPath, dataHome).path }))
   ipcMain.handle('saveSettings', (_e, s: Settings) => {
     const oldHome = settings.providers[0]?.id, newHome = s.providers[0]?.id

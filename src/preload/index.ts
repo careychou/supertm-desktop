@@ -49,6 +49,8 @@ const api: DeskApi = {
   getProjectUsage: inv('getProjectUsage') as any,
   getAzureUsage: inv('getAzureUsage') as any,
   usageInfo: inv('usageInfo') as any,
+  azureLogin: inv('azureLogin') as any,
+  cancelAzureLogin: inv('cancelAzureLogin') as any,
   saveSettings: inv('saveSettings') as any,
   registryInfo: inv('registryInfo') as any,
   syncExport: inv('syncExport') as any,

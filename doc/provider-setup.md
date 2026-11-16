@@ -152,8 +152,12 @@ this app. It shows two numbers side by side:
 - **Billed** is the actual charge from Azure Cost Management, per day and per model. It lags
   about a day; treat it as authoritative.
 
-**Sign-in.** By default the app uses the signed-in Azure CLI: run `az login` once (add
-`--tenant <tenant-id>` if you have several). To use a service principal instead, open
+**Sign-in.** By default the app uses the signed-in Azure CLI. If the CLI is installed but not
+signed in (or its sign-in expired), the Azure resource tab shows **Sign in to Azure**: click it and
+the app runs `az login` (with the provider's **Tenant id**, if set), you finish Microsoft sign-in in
+the browser, and the tab reloads by itself. Tokens stay in the Azure CLI's own cache; the app never
+shows them. You can also run `az login` yourself in a terminal (add `--tenant <tenant-id>` if you
+have several). If the CLI isn't installed, the tab says so; install it or use a service principal. To use a service principal instead, open
 **Usage & billing (optional)** on the Azure provider and fill in **Tenant id**, **Client id** and
 **Client secret**. The secret is stored encrypted, like the API key.
 

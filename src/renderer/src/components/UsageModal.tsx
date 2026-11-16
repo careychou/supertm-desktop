@@ -49,6 +49,7 @@ export function UsageModal({ onClose, onOpenChat }: { onClose(): void; onOpenCha
   const [days, setDays] = useState(7)
   const [rep, setRep] = useState<UsageReport | null>(null)
   const [loading, setLoading] = useState(false)
+  const [azLogin, setAzLogin] = useState<{ busy: boolean; error?: string }>({ busy: false })
   const [info, setInfo] = useState<{ project: string | null; azure: string | null; pricing: string | null } | null>(null)
 
   const load = useCallback(async () => {
@@ -58,6 +59,14 @@ export function UsageModal({ onClose, onOpenChat }: { onClose(): void; onOpenCha
   useEffect(() => { setRep(null); void load() }, [load])
   useEffect(() => { void window.desk.usageInfo().then(setInfo) }, [])
   useEffect(() => { if (tab !== 'local') return; return window.desk.onPush((p) => { if (p.type === 'usage') void load() }) }, [tab, load])
+
+  const signIn = async () => {
+    setAzLogin({ busy: true })
+    const r = await window.desk.azureLogin()
+    setAzLogin({ busy: false, error: r.ok || r.cancelled ? undefined : r.error })
+    if (r.ok) void load()
+  }
+  useEffect(() => () => { void window.desk.cancelAzureLogin() }, [])
 
   const t = rep?.total
   useEscape(onClose)
@@ -84,7 +93,16 @@ export function UsageModal({ onClose, onOpenChat }: { onClose(): void; onOpenCha
             : <>Whole GCP project{rep?.project ? <> <code>{rep.project}</code></> : ''} from Cloud Monitoring, signed in with your Google Vertex AI provider{!rep?.project && info?.project ? <> (<code>{info.project}</code>)</> : ''}. Includes every caller, not just you; about 6 weeks of history; Cloud Billing is authoritative.</>}
         </p>
         {loading && !rep && <div className="muted">{tab === 'project' ? 'Querying Cloud Monitoring…' : tab === 'azure' ? 'Querying Azure Monitor and Cost Management…' : 'Loading…'}</div>}
-        {rep?.error && <pre className="err">{rep.error}</pre>}
+        {rep?.error && tab === 'azure' && rep.needsAzLogin ? (
+          <div className="az-login">
+            <p><b>Sign in to Azure</b> to read this resource's usage and cost. The Azure CLI opens your browser for Microsoft sign-in; the app then gets its access token privately — nothing to copy or paste.</p>
+            {azLogin.busy
+              ? <div className="row"><span className="muted">Waiting for you to finish signing in in the browser…</span><button onClick={() => void window.desk.cancelAzureLogin()}>Cancel</button></div>
+              : <div className="row"><button className="primary" onClick={signIn}>Sign in to Azure</button><button onClick={load} disabled={loading}>Try again</button></div>}
+            {azLogin.error && <pre className="err">az login failed: {azLogin.error}</pre>}
+            <details className="muted small"><summary>Details</summary><pre>{rep.error}</pre></details>
+          </div>
+        ) : rep?.error && <pre className="err">{rep.error}</pre>}
         {rep && !rep.error && t && (
           <>
             <div className="usage-cards">

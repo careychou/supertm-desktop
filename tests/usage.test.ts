@@ -147,6 +147,36 @@ describe('azure usage (Azure Monitor + Cost Management)', () => {
     expect(r.warnings.some((w) => /93 days/.test(w))).toBe(true)
   })
 
+  it('offers az login when the Azure CLI is installed but not signed in, and runs it', async () => {
+    const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path')
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-az-'))
+    const log = path.join(bin, 'calls')
+    fs.writeFileSync(path.join(bin, 'az'), `#!/bin/sh\necho "$@" >> ${log}\nif [ "$1" = login ]; then touch ${bin}/ok; exit 0; fi\n[ -f ${bin}/ok ] && { echo tok; exit 0; }\necho "ERROR: Please run 'az login' to setup account." >&2; exit 1\n`, { mode: 0o755 })
+    const oldPath = process.env.PATH
+    process.env.PATH = `${bin}:${oldPath}`
+    try {
+      const { getAzureUsage, azureLogin, azureArmToken } = await import('../src/main/usage')
+      const prov = { id: 'az', name: 'Azure', kind: 'azure' as const, baseUrl: 'https://res.openai.azure.com', apiKey: 'k', tenantId: 't1' }
+      const r = await getAzureUsage([prov], 7, '', '/nonexistent')
+      expect(r.needsAzLogin).toBe(true)
+      expect(r.error).toMatch(/Sign in to Azure[\s\S]*az login/)
+      expect(await azureLogin(prov)).toEqual({ ok: true })
+      expect(fs.readFileSync(log, 'utf8')).toMatch(/^login .*--tenant t1/m)
+      expect(await azureArmToken(prov)).toBe('tok')
+    } finally { process.env.PATH = oldPath; fs.rmSync(bin, { recursive: true, force: true }) }
+  })
+
+  it('reports a missing Azure CLI without offering sign-in', async () => {
+    const oldPath = process.env.PATH
+    process.env.PATH = '/nonexistent'
+    try {
+      const { getAzureUsage } = await import('../src/main/usage')
+      const r = await getAzureUsage([{ id: 'az', name: 'Azure', kind: 'azure', baseUrl: 'https://res.openai.azure.com', apiKey: 'k' }], 7, '', '/nonexistent')
+      expect(r.needsAzLogin).toBeUndefined()
+      expect(r.error).toMatch(/not found/)
+    } finally { process.env.PATH = oldPath }
+  })
+
   it('keeps the token report when Cost Management is forbidden', async () => {
     const { getAzureUsage } = await import('../src/main/usage')
     const f = (async (url: string) => url.includes('CostManagement')
