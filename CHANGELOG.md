@@ -1,5 +1,16 @@
 # Release notes
 
+## 1.2.8
+
+### Text-to-speech models (Google Vertex)
+- Add a Gemini TTS model to your Vertex model list, for example `google/gemini-3.8-flash-tts`. Pick it in the composer and it **reads your text aloud**. The reply has a player you can play and scrub, plus where the WAV file was saved (the `media` folder in the app's data folder)
+- Any model ending in `-tts` is recognized automatically; add `tts` to the line for other names
+- **Pick the voice per message:** start the prompt with `voice: Puck — Hello team…`. Set a model's default voice on its line with `voice=Name` (e.g. `google/gemini-3.8-flash-tts voice=Puck`); otherwise it's **Kore**. 30 Gemini voices are available (Kore, Puck, Charon, Fenrir, Aoede, Leda, Orus, Zephyr, …)
+- **Steer the delivery** in plain words: "Say cheerfully: …", "Read slowly and calmly: …", "In a whisper: …". It is sent to the model as a director's note, so only your text is spoken, not the instruction
+- **Two-speaker dialogue:** put `voices: Carey=Puck, Pearl=Kore` on the first line, then `Carey: …` / `Pearl: …` lines. A script whose lines all start with one of two names is read as a dialogue even without the `voices:` line
+- With a TTS model selected, the chat box shows a hint with these patterns; click one to insert it
+- A TTS model reads only your latest message. It doesn't see the chat history and can't use tools
+
 ## 1.2.7
 
 ### Fix: a refused keychain prompt no longer wipes your settings

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { hasMemory, type Memory } from '../../../shared/memory'
 import type { AttachInput, ModelGroup, PreparedAttachment } from '../../../shared/api'
-import { bareModel } from '../../../shared/providers'
+import { bareModel, isTtsId, TTS_VOICES } from '../../../shared/providers'
 
 type Chip = PreparedAttachment & { pending?: boolean }
 
@@ -34,6 +34,11 @@ interface Props {
 export type Mode = 'interactive' | 'autopilot'
 export type Effort = 'off' | 'low' | 'medium' | 'high'
 const EFFORTS: Array<[Effort, string]> = [['off', 'Thinking off'], ['low', 'Low effort'], ['medium', 'Medium effort'], ['high', 'High effort']]
+const TTS_EXAMPLES: Array<[string, string, string]> = [
+  ['Style', 'Say cheerfully: ', 'Steer tone, pace or accent in plain words'],
+  ['Voice', 'voice: Puck — ', 'Pick the voice for this message'],
+  ['Dialogue', 'voices: Carey=Puck, Pearl=Kore\nCarey: \nPearl: ', 'Two speakers: one Name: line each']
+]
 const fileName = (p: string) => p.split('/').pop() ?? p
 const memLabel = (m: Memory) => [m.notes.trim() && 'Notes', m.files.length === 1 ? fileName(m.files[0]) : m.files.length > 1 && `${m.files.length} files`].filter(Boolean).join(' · ')
 const memSummary = (m: Memory) => [m.notes.trim() && `Notes: ${m.notes.trim().slice(0, 120)}${m.notes.trim().length > 120 ? '…' : ''}`, ...m.files.map((f) => `📄 ${fileName(f)}`)].filter(Boolean).join('\n')
@@ -43,6 +48,7 @@ const folderName = (p: string) => p.split('/').filter(Boolean).pop() ?? p
 
 export function Composer(p: Props) {
   const [text, setText] = useState('')
+  const tts = isTtsId(bareModel(p.model))
   const ta = useRef<HTMLTextAreaElement>(null)
   useEffect(() => { if (p.autoFocus) ta.current?.focus() }, [p.autoFocus])
   useEffect(() => {
@@ -113,7 +119,7 @@ export function Composer(p: Props) {
         <textarea
           ref={ta}
           rows={1}
-          placeholder={p.busy ? 'Queue a follow-up: it joins at the agent\'s next step (Enter)' : 'Ask anything, or describe a task…'}
+          placeholder={p.busy ? 'Queue a follow-up: it joins at the agent\'s next step (Enter)' : tts ? 'Type text to read aloud…' : 'Ask anything, or describe a task…'}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onPaste={(e) => {
@@ -124,6 +130,17 @@ export function Composer(p: Props) {
           }}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit() } }}
         />
+        {tts && (
+          <div className="tts-hint" title={`Voices: ${TTS_VOICES.join(', ')}`}>
+            <span>🔊 Reads your text aloud.</span>
+            {TTS_EXAMPLES.map(([label, tpl, tip]) => (
+              <button key={label} title={`${tip}. Click to insert:\n${tpl}`} onClick={() => { setText(text.trim() ? `${tpl}${text}` : tpl); ta.current?.focus() }}>
+                {label}: <code>{tpl.split('\n')[0].trim()} …</code>
+              </button>
+            ))}
+            <span className="muted">Voices: {TTS_VOICES.slice(0, 6).join(', ')}…</span>
+          </div>
+        )}
         <div className="composer-bar">
           <button className="clip" onClick={pick} title="Attach files (or paste / drop them). Images are downscaled and documents trimmed to save tokens.">📎</button>
           <select className="model-pick" value={p.model} onChange={(e) => p.onModel(e.target.value)} title={p.model}>

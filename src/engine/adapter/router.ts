@@ -13,12 +13,12 @@ export class ProviderRouter implements ModelAdapter {
   /** Owner of unprefixed model ids: always the first stored provider, even when disabled, so ids never silently move to another provider. */
   private home?: ProviderEntry
 
-  constructor(providers: ProviderEntry[], budget?: () => RequestBudget) {
+  constructor(providers: ProviderEntry[], budget?: () => RequestBudget, mediaDir?: string) {
     this.home = providers[0]
     this.list = providers.filter((p) => p.enabled !== false)
     for (const p of this.list) {
       if (p.kind === 'vertex') {
-        this.adapters.set(p.id, new VertexAdapter({ project: p.project ?? '', location: p.location, credentialsPath: p.credentialsPath, models: p.models ?? [], visionModel: p.visionModel, cacheTtl: p.cacheTtl, budget, endpoint: p.baseUrl || undefined }))
+        this.adapters.set(p.id, new VertexAdapter({ project: p.project ?? '', location: p.location, credentialsPath: p.credentialsPath, models: p.models ?? [], visionModel: p.visionModel, cacheTtl: p.cacheTtl, budget, mediaDir, endpoint: p.baseUrl || undefined }))
         continue
       }
       const cfg: AdapterConfig = { baseUrl: p.baseUrl, apiKey: p.apiKey, kind: p.kind, apiVersion: p.apiVersion, deployments: p.deployments, budget }

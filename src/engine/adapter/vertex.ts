@@ -1,10 +1,13 @@
 import crypto from 'node:crypto'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import type { ChatRequest, ContentPart, Delta, Message, ModelAdapter, ToolSchema } from '../types'
 import { parseSSE } from './sse'
 import { fitRequest, type RequestBudget } from '../content'
 import { OpenAIAdapter } from './openai'
 import { VertexAuth } from './vertex-auth'
-import { parseVertexModels, type VertexModel } from '../../shared/providers'
+import { parseVertexModels, planSpeech, speechPrompt, type VertexModel } from '../../shared/providers'
 
 export interface VertexConfig {
   project: string
@@ -19,6 +22,8 @@ export interface VertexConfig {
   /** Claude prompt-cache TTL; `off` disables cache breakpoints. */
   cacheTtl?: '5m' | '1h' | 'off'
   budget?: () => RequestBudget
+  /** Where text-to-speech audio is saved (default: the OS temp folder). */
+  mediaDir?: string
   /** Tests only: replaces https://{loc-}aiplatform.googleapis.com. */
   endpoint?: string
 }
@@ -198,7 +203,7 @@ export class VertexAdapter implements ModelAdapter {
     const ms = await this.listModels()
     if (!ms.length) throw new Error('no models configured')
     await this.auth.token(true)
-    const probe = ms.find((m) => !m.startsWith('anthropic/')) ?? ms[0]
+    const probe = ms.find((m) => !m.startsWith('anthropic/') && !this.model(m).tts) ?? ms[0]
     for await (const _ of this.stream({ model: probe, messages: [{ role: 'user', content: 'ping' }], maxTokens: 1 }, AbortSignal.timeout(30_000))) { /* drain */ }
     return ms
   }
@@ -216,6 +221,7 @@ export class VertexAdapter implements ModelAdapter {
 
   async *stream(req: ChatRequest, signal: AbortSignal): AsyncIterable<Delta> {
     const m = this.model(req.model)
+    if (m.tts) { yield* this.speech(m, req, signal); return }
     let messages = this.cfg.budget ? fitRequest(req.messages, this.cfg.budget()) : req.messages
     if (m.vision === 'describe') messages = await this.describeImages(messages, signal)
     if (m.id.startsWith('anthropic/')) yield* this.claude(m, { ...req, messages }, signal)
@@ -253,6 +259,40 @@ export class VertexAdapter implements ModelAdapter {
     return a.stream(req, signal)
   }
 
+  /**
+   * Text-to-speech (native generateContent with AUDIO output). Reads the last prompt aloud, saves a WAV in
+   * mediaDir and replies with a player link. History, system prompt and tools don't apply to a TTS model.
+   */
+  private async *speech(m: VertexModel, req: ChatRequest, signal: AbortSignal): AsyncIterable<Delta> {
+    const last = [...req.messages].reverse().find((x) => x.role === 'user')
+    const plan = planSpeech(textOf(last?.content), m.tts!.voice)
+    const text = plan.text
+    if (!text) throw new Error(`${m.id} reads text aloud: type the text (you can add a style, e.g. "Say warmly: …")`)
+    const [pub, slug] = m.id.includes('/') ? [m.id.slice(0, m.id.indexOf('/')), m.id.slice(m.id.indexOf('/') + 1)] : ['google', m.id]
+    const pv = (v: string) => ({ prebuiltVoiceConfig: { voiceName: v } })
+    const speechConfig = plan.speakers
+      ? { multiSpeakerVoiceConfig: { speakerVoiceConfigs: plan.speakers.map((s) => ({ speaker: s.speaker, voiceConfig: pv(s.voice) })) } }
+      : { voiceConfig: pv(plan.voice!) }
+    const voice = plan.speakers ? `voices ${plan.speakers.map((s) => `${s.speaker}=${s.voice}`).join(', ')}` : `voice ${plan.voice}`
+    const body = { contents: [{ role: 'user', parts: [{ text: speechPrompt(plan) }] }], generationConfig: { responseModalities: ['AUDIO'], speechConfig } }
+    const res = await this.post(`${this.base(m.location)}/publishers/${encodeURIComponent(pub)}/models/${encodeURIComponent(slug)}:generateContent`, body, signal)
+    if (!res.ok) throw await httpError(res)
+    const j: any = await res.json()
+    const part = (j.candidates?.[0]?.content?.parts ?? []).find((p: any) => p.inlineData?.data)
+    if (!part) throw new Error(`${m.id} returned no audio${j.candidates?.[0]?.finishReason ? ` (${j.candidates[0].finishReason})` : ''}`)
+    const wav = toWav(Buffer.from(part.inlineData.data, 'base64'), String(part.inlineData.mimeType ?? ''))
+    const dir = this.cfg.mediaDir || path.join(os.tmpdir(), 'desk-media')
+    fs.mkdirSync(dir, { recursive: true })
+    const name = `tts-${new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)}-${crypto.randomBytes(3).toString('hex')}.wav`
+    const file = path.join(dir, name)
+    fs.writeFileSync(file, wav)
+    const secs = wav.length > 44 ? (wav.length - 44) / (wav.readUInt32LE(28) || 48000) : 0
+    yield { type: 'text', text: `🔊 Read aloud by \`${m.id}\` · ${voice}${plan.style ? ` · style “${plan.style}”` : ''} · ${secs.toFixed(1)} s\n\n[${name}](${MEDIA_SCHEME}://media/${name})\n\nSaved to \`${file}\`` }
+    const u = j.usageMetadata
+    if (u) yield { type: 'usage', prompt: u.promptTokenCount ?? 0, completion: u.candidatesTokenCount ?? 0, model: j.modelVersion ? `${pub}/${j.modelVersion}` : undefined }
+    yield { type: 'finish', reason: 'stop' }
+  }
+
   /** Swaps image parts for text transcriptions by the vision model (cached per image). */
   private async describeImages(msgs: Message[], signal: AbortSignal): Promise<Message[]> {
     const vm = this.cfg.visionModel?.trim() || DEFAULT_VISION_MODEL
@@ -281,6 +321,20 @@ export class VertexAdapter implements ModelAdapter {
     this.described.set(key, out)
     return out
   }
+}
+
+/** URL scheme the app serves saved media from (see main: only files inside mediaDir). */
+export const MEDIA_SCHEME = 'desk-media'
+
+/** Returns WAV bytes as-is; wraps raw 16-bit PCM (`audio/L16;rate=24000`, `audio/pcm`) in a WAV header. */
+export function toWav(data: Buffer, mime: string): Buffer {
+  if (data.subarray(0, 4).toString('ascii') === 'RIFF') return data
+  const rate = Number(/rate=(\d+)/i.exec(mime)?.[1] ?? 24000)
+  const h = Buffer.alloc(44)
+  h.write('RIFF', 0); h.writeUInt32LE(36 + data.length, 4); h.write('WAVE', 8); h.write('fmt ', 12)
+  h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22); h.writeUInt32LE(rate, 24)
+  h.writeUInt32LE(rate * 2, 28); h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34); h.write('data', 36); h.writeUInt32LE(data.length, 40)
+  return Buffer.concat([h, data])
 }
 
 async function httpError(res: Response): Promise<Error> {

@@ -92,7 +92,7 @@ export function ProvidersTab({ s, setS }: { s: Settings; setS(s: Settings): void
                       <button onClick={() => pickKey(p)}>Choose…</button>
                     </span>
                   </label>
-                  <label><span>Models (one per line: <code>publisher/model</code>, optional <code>@location</code>, <code>describe</code> for text-only models)</span>
+                  <label><span>Models (one per line: <code>publisher/model</code>, optional <code>@location</code>, <code>describe</code> for text-only models, <code>-tts</code> models read the prompt aloud, <code>voice=Puck</code> picks the voice)</span>
                     <textarea rows={6} value={(p.models ?? []).join('\n')} placeholder={'anthropic/claude-sonnet-5\ngoogle/gemini-2.5-pro\nzai-org/glm-5.2-maas describe'} onChange={(e) => upd(p.id, { models: e.target.value.split('\n') })} />
                     <span className="muted small">{parseVertexModels(p.models ?? [], p.location || 'global').length} models · Claude uses the Anthropic endpoint with prompt caching; others use Vertex's OpenAI-compatible endpoint.</span>
                   </label>

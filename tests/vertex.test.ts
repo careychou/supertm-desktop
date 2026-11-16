@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { VertexAdapter, toAnthropic, anthropicDeltas } from '../src/engine/adapter/vertex'
 import { signJwt } from '../src/engine/adapter/vertex-auth'
-import { parseVertexModels } from '../src/shared/providers'
+import { parseVertexModels, planSpeech } from '../src/shared/providers'
 import { Assembler } from '../src/engine/adapter/assemble'
 import type { Delta, Message } from '../src/engine/types'
 
@@ -30,6 +30,11 @@ function fakeGoogle(opts: { failFirst?: number } = {}): Promise<{ host: string; 
         hits.push({ url, headers: req.headers, body, raw: b })
         if (url === '/token') { rs.writeHead(200, { 'content-type': 'application/json' }); rs.end(JSON.stringify({ access_token: `tok${++n}`, expires_in: 3600 })); return }
         if (fails > 0) { fails--; rs.writeHead(401); rs.end('{"error":{"message":"expired"}}'); return }
+        if (url.includes(':generateContent')) {
+          rs.writeHead(200, { 'content-type': 'application/json' })
+          rs.end(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'audio/L16;codec=pcm;rate=24000', data: Buffer.alloc(48000).toString('base64') } }] } }], usageMetadata: { promptTokenCount: 7, candidatesTokenCount: 25 }, modelVersion: 'gemini-3.8-flash-tts' }))
+          return
+        }
         rs.writeHead(200, { 'content-type': 'text/event-stream' })
         if (url.includes(':streamRawPredict')) {
           const ev = (o: unknown) => rs.write(`event: x\ndata: ${JSON.stringify(o)}\n\n`)
@@ -174,6 +179,60 @@ describe('Anthropic translation', () => {
     const out: Delta[] = []
     for await (const d of anthropicDeltas(ev())) out.push(d)
     expect(out.at(-1)).toEqual({ type: 'finish', reason: 'length' })
+  })
+})
+
+describe('Vertex text-to-speech', () => {
+  it('reads the last prompt aloud via generateContent and saves a playable WAV', async () => {
+    const g = await fakeGoogle()
+    const media = fs.mkdtempSync(path.join(os.tmpdir(), 'media-')); tmp.push(media)
+    const a = new VertexAdapter({ project: 'proj', credentialsPath: keyFile(g.host), models: ['google/gemini-3.8-flash-tts voice=Puck'], endpoint: g.host, mediaDir: media })
+    const tools = [{ type: 'function' as const, function: { name: 'read_file', description: 'Read', parameters: { type: 'object', properties: {} } } }]
+    const { ds, msg } = await collect(a.stream({ model: 'google/gemini-3.8-flash-tts', tools, messages: [{ role: 'system', content: 'long agent prompt' }, { role: 'user', content: 'old' }, { role: 'assistant', content: 'x' }, { role: 'user', content: 'Say warmly: hello' }] }, sig()))
+    const call = g.hits[1]
+    expect(call.url).toBe('/v1/projects/proj/locations/global/publishers/google/models/gemini-3.8-flash-tts:generateContent')
+    expect(call.body).toEqual({ contents: [{ role: 'user', parts: [{ text: "### DIRECTOR'S NOTES\nStyle: Say warmly\n\n### TRANSCRIPT\nhello" }] }], generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } } } })
+    const [name] = fs.readdirSync(media)
+    const wav = fs.readFileSync(path.join(media, name))
+    expect(wav.subarray(0, 4).toString()).toBe('RIFF')
+    expect(wav.readUInt32LE(24)).toBe(24000)
+    expect(msg.content).toContain(`(desk-media://media/${name})`)
+    expect(msg.content).toContain('1.0 s')
+    expect(ds).toContainEqual({ type: 'usage', prompt: 7, completion: 25, model: 'google/gemini-3.8-flash-tts' })
+    expect(ds.at(-1)).toEqual({ type: 'finish', reason: 'stop' })
+    g.close()
+  })
+
+  it('sends a two-speaker dialogue as multiSpeakerVoiceConfig', async () => {
+    const g = await fakeGoogle()
+    const media = fs.mkdtempSync(path.join(os.tmpdir(), 'media-')); tmp.push(media)
+    const a = new VertexAdapter({ project: 'proj', credentialsPath: keyFile(g.host), models: ['google/gemini-3.8-flash-tts'], endpoint: g.host, mediaDir: media })
+    const { msg } = await collect(a.stream({ model: 'google/gemini-3.8-flash-tts', messages: [{ role: 'user', content: 'voices: Carey=puck, Pearl=Kore\nCarey: Hi\nPearl: Hello' }] }, sig()))
+    expect(g.hits[1].body.contents[0].parts[0].text).toBe('Carey: Hi\nPearl: Hello')
+    expect(g.hits[1].body.generationConfig.speechConfig).toEqual({ multiSpeakerVoiceConfig: { speakerVoiceConfigs: [
+      { speaker: 'Carey', voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } },
+      { speaker: 'Pearl', voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } }
+    ] } })
+    expect(msg.content).toContain('voices Carey=Puck, Pearl=Kore')
+    g.close()
+  })
+
+  it('reads the voice choice from the prompt', () => {
+    expect(planSpeech('voice: Puck — Hello team', 'Kore')).toEqual({ text: 'Hello team', voice: 'Puck' })
+    expect(planSpeech('Voice=charon\nSay slowly: hi', 'Kore')).toEqual({ text: 'hi', voice: 'Charon', style: 'Say slowly' })
+    expect(planSpeech('Voice: this message is plain text', 'Kore')).toEqual({ text: 'Voice: this message is plain text', voice: 'Kore' })
+    expect(planSpeech('Say cheerfully: hi', 'Kore')).toEqual({ text: 'hi', voice: 'Kore', style: 'Say cheerfully' })
+    expect(planSpeech('voice: Puck — Read slowly: hi', 'Kore')).toEqual({ text: 'hi', voice: 'Puck', style: 'Read slowly' })
+    expect(planSpeech('Read like a podcast intro:\nAnn: hi\nBen: hey', 'Kore')).toMatchObject({ text: 'Ann: hi\nBen: hey', style: 'Read like a podcast intro', speakers: [{ speaker: 'Ann' }, { speaker: 'Ben' }] })
+    expect(planSpeech('Hello: world', 'Kore')).toEqual({ text: 'Hello: world', voice: 'Kore' })
+    expect(planSpeech('Ann: hi\nBen: hey\nAnn: bye', 'Kore').speakers).toEqual([{ speaker: 'Ann', voice: 'Kore' }, { speaker: 'Ben', voice: 'Puck' }])
+    expect(planSpeech('Ann: a\nBen: b\nCal: c', 'Kore').speakers).toBeUndefined()
+    expect(() => planSpeech('voices: A=Kore, B=Puck, C=Leda\nA: x', 'Kore')).toThrow(/up to 2/)
+  })
+
+  it('marks -tts models (and the tts flag) as text-to-speech', () => {
+    expect(parseVertexModels(['google/gemini-3.8-flash-tts', 'google/gemini-3.1-flash-tts-preview @us-central1', 'google/custom-voice tts', 'google/gemini-3.8-flash']).map((m) => m.tts?.voice ?? null))
+      .toEqual(['Kore', 'Kore', 'Kore', null])
   })
 })
 

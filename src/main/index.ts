@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, dialog, clipboard, shell as eshell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, clipboard, net, protocol, shell as eshell } from 'electron'
+import { pathToFileURL } from 'node:url'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -7,6 +8,7 @@ import { Store } from './store'
 import { loadSettings, saveSettings, setSettingsDir, type Settings } from './settings'
 import { resolveDataHome, migrateDataHome } from './datahome'
 import { ProviderRouter } from '../engine/adapter/router'
+import { MEDIA_SCHEME } from '../engine/adapter/vertex'
 import { orphanToPrimary, rehomeModel, type ProviderEntry } from '../shared/providers'
 import { COMPACT_ID, Session } from '../engine/engine'
 import { loadRegistry } from '../engine/registry/registry'
@@ -47,7 +49,7 @@ const stateDirOf = (id: string) => path.join(dataHome, 'sessions', id)
 const folderMemoryOf = (cwd: string) => parseMemory(store.getFolder(cwd)?.memory)
 const sharesDir = () => path.join(app.getPath('documents'), BRAND.name, 'shares')
 const budget = () => ({ maxBytes: settings.requestMaxMB * 1024 * 1024, imageTurns: settings.imageTurns })
-const router = (providers: ProviderEntry[] = settings.providers) => new ProviderRouter(providers, budget)
+const router = (providers: ProviderEntry[] = settings.providers) => new ProviderRouter(providers, budget, mediaDir())
 /** Delegates to a router rebuilt whenever the providers change, so open chats pick up Settings edits. */
 let currentRouter: ProviderRouter | null = null
 const adapter = () => ({ stream: (req: any, signal: AbortSignal) => (currentRouter ??= router()).stream(req, signal) })
@@ -367,6 +369,9 @@ const legacyDir = path.join(app.getPath('appData'), BRAND.dataDir)
 if (!profileDir) app.setPath('userData', legacyDir)
 // Chats + settings live in a plain dot-folder (default ~/<BRAND.homeDir>) so the CLI and agents can find them.
 const dataHome = resolveDataHome({ env: process.env, home: os.homedir(), profileDir })
+/** Audio made by text-to-speech models; served to the chat only through MEDIA_SCHEME. */
+const mediaDir = () => path.join(dataHome, 'media')
+protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }])
 
 app.whenReady().then(() => {
   app.setName(BRAND.name)
@@ -378,6 +383,13 @@ app.whenReady().then(() => {
     try { const moved = migrateDataHome(legacyDir, dataHome); if (moved.length) console.log(`Copied ${moved.join(', ')} from ${legacyDir} to ${dataHome}`) }
     catch (e) { console.error('Data migration failed; starting with the new folder', e) }
   }
+  // Serves only plain files directly inside mediaDir (no subfolders, no path tricks).
+  protocol.handle(MEDIA_SCHEME, (req) => {
+    const name = decodeURIComponent(new URL(req.url).pathname.replace(/^\//, ''))
+    const file = path.join(mediaDir(), name)
+    if (!name || name !== path.basename(name) || !/\.(wav|mp3|ogg)$/i.test(name) || !fs.existsSync(file)) return new Response('not found', { status: 404 })
+    return net.fetch(pathToFileURL(file).toString(), { headers: req.headers })
+  })
   setSettingsDir(dataHome)
   settings = loadSettings()
   store = new Store(dataHome)
