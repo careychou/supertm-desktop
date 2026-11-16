@@ -3,6 +3,8 @@ import type { AttachMeta, BookmarkRow, FolderRow, Listing, ModelGroup, PreparedA
 import { insertBeforeTurn } from '../../shared/fork'
 import { applyEvent, runningBackground, settle, type Item } from './state'
 import { ItemList } from './components/Cards'
+import { TurnRail } from './components/TurnRail'
+import { jumpTurn } from './turns'
 import { Composer, type Effort, type Mode } from './components/Composer'
 import { MemoryModal } from './components/MemoryModal'
 import { emptyMemory, parseMemory, serializeMemory, type Memory } from '../../shared/memory'
@@ -93,6 +95,21 @@ export function App() {
   const itemsRef = useRef<Item[]>([])
   const scroller = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
+  useEffect(() => {
+    // ⌥↑ / ⌥↓ jump between prompts; inside a non-empty composer they keep their usual text-editing meaning
+    const key = (e: KeyboardEvent) => {
+      if (!e.altKey || e.metaKey || e.ctrlKey || e.shiftKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return
+      const a = document.activeElement
+      if (a instanceof HTMLTextAreaElement || a instanceof HTMLInputElement) { if (a.value) return }
+      else if (a instanceof HTMLElement && a.isContentEditable) return
+      const el = scroller.current
+      if (!el) return
+      e.preventDefault()
+      if (e.key === 'ArrowDown') { if (!jumpTurn(el, 1)) stick.current = true } else jumpTurn(el, -1)
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [])
   currentRef.current = current
   itemsRef.current = items
 
@@ -330,6 +347,8 @@ export function App() {
           </div>
         ) : (
           <>
+            <div className="scroll-wrap">
+            <TurnRail scroller={scroller} items={items} />
             <div className="scroll" ref={scroller} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80 }}>
               <div className="thread">
                 <ItemList items={items} live={busy} onFork={fork} />
@@ -337,6 +356,7 @@ export function App() {
                 {perms.map((r) => <PermissionCard key={r.requestId} req={r} onDecide={(d) => { void window.desk.respondPermission(r.requestId, d); setPerms((x) => x.filter((y) => y.requestId !== r.requestId)) }} />)}
                 {asks.map((r) => <AskCard key={r.requestId} req={r} onAnswer={(a) => { void window.desk.respondAsk(r.requestId, a); setAsks((x) => x.filter((y) => y.requestId !== r.requestId)); setItems((p) => [...p, { t: 'answer', text: a }]) }} />)}
               </div>
+            </div>
             </div>
             <div className="bottom">
               {overThreshold && !busy && (

@@ -29,6 +29,7 @@ Everything SuperTM Desktop does, in detail. New to the app? Start with the [tuto
 ## Chats & organization
 - **Working folders** — the sidebar groups chats by folder, Copilot-style. Pick the folder when starting a chat; skills/agents reload per folder.
 - **Fork from any turn** — hover a turn → *⑂ Fork from here*. The fork gets the history up to that point and is filed **under the chat it came from** (forks of forks nest).
+- **Turn navigation** — a tick rail on the right edge (one tick per prompt; hover for the prompt and reply, click to jump), the current prompt pinned at the top while you read its reply, and ⌥↑/⌥↓ to jump between prompts.
 - **Drag & drop** — drag chats to reorder them (within the same folder/level), drag a chat onto **Bookmarks** or a bookmark folder to pin it, and drag pins/folders to reorder or nest them.
 - **Rename & delete** — double-click to rename, or use the ⋯ menu / right-click.
 - **Sync sessions** — Settings → *Sync sessions* exports all or some chats to a folder (OneDrive, Google Drive, USB) and, on another Mac, imports the ones you pick. Chats are matched by a unique ID; when one already exists you see how much newer or older the import is and choose **Skip**, **Overwrite local** or **Import as fork** (a copy with a new ID under the local chat). You choose which working folder on this Mac the chats go into; the other Mac's folder is not brought over.

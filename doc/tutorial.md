@@ -152,6 +152,12 @@ Type in the box at the bottom and press **Enter** (**Shift+Enter** adds a new li
 - Tool calls and sub-agents show inline while they run. You can keep typing; new prompts queue up behind the current turn.
 - Hover over a turn to **fork** a new chat from that point. The fork is filed under the original chat.
 
+### Find a turn in a long chat
+
+- A **rail of tick marks** on the right edge of the chat has one tick per prompt. The blue tick is the turn you are reading. Hover a tick to see the prompt and the first line of the reply; click it to jump there.
+- When you scroll past a prompt into its reply, the prompt stays **pinned at the top** of the chat. Click it to go back to the start of that turn.
+- **⌥↑ / ⌥↓** jump to the previous / next prompt. (While the message box has text in it, these keep their usual text-editing meaning.)
+
 ### Folder memory: notes every chat in a folder shares
 
 ![Folder memory](images/tutorial/03d-folder-memory.png)
@@ -238,5 +244,6 @@ Open **Settings (⚙) → About**. It shows the app version, the build (git comm
 | **Enter** / **Shift+Enter** | Send / new line |
 | **⌘B** | Show or hide the sidebar |
 | **⌘⇧U** | AI usage |
+| **⌥↑ / ⌥↓** | Jump to the previous / next prompt in the chat |
 | **⌘V** | Paste a screenshot or file as an attachment |
 | **Esc** | Close the open dialog |

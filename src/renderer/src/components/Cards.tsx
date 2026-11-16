@@ -204,7 +204,7 @@ export function ItemList({ items, live, onFork }: { items: Item[]; live: boolean
           case 'error': return <div className="err">{it.text}</div>
           case 'compact': return <CompactMarker it={it} />
         } })()
-        return <div key={sg.i} className="item">{el}{forkBtn}</div>
+        return <div key={sg.i} className="item" data-turn={it.t === 'user' ? t : undefined}>{el}{forkBtn}</div>
       })}
     </>
   )

@@ -1,5 +1,12 @@
 # Release notes
 
+## 1.2.3
+
+### New: jump between turns in long chats
+- **Turn rail**: tick marks on the right edge of the chat, one per prompt. The current turn is highlighted; hover a tick for the prompt and the first line of the reply, click to jump to it
+- **Pinned prompt**: while you read a long reply, its prompt stays pinned at the top of the chat; click it to go back to the start of the turn
+- **⌥↑ / ⌥↓** jump to the previous / next prompt (inside a non-empty message box they keep their text-editing meaning)
+
 ## 1.2.2
 
 ### New: About page shows which version you are running
