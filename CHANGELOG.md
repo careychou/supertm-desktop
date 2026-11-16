@@ -1,5 +1,12 @@
 # Release notes
 
+## 1.2.5
+
+### Fix: downloaded app no longer reported as "damaged"
+- Earlier builds kept only the Electron binary's signature, so a browser-downloaded copy failed macOS's signature check and was reported as **"SuperTM Desktop" is damaged and can't be opened**
+- The app is now fully signed ad hoc. It still isn't notarized by Apple, so the first launch shows **can't verify the developer**: approve it once in **System Settings → Privacy & Security → Open Anyway**, or run `xattr -cr "/Applications/SuperTM Desktop.app"` (see the README)
+- After each update, macOS asks once for your login password to unlock the app's saved keys (*Safe Storage*): click **Always Allow**. Ad-hoc signed apps are identified by build, so only Apple Developer ID signing would avoid this prompt
+
 ## 1.2.4
 
 ### Fix: AI usage → Azure resource asks you to sign in instead of failing

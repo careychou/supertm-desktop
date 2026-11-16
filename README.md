@@ -27,10 +27,12 @@ It reads skills and agents from the same places Copilot does — `<folder>/.gith
 ## Install
 
 1. Download the `.dmg` for Apple Silicon from **[Releases](https://github.com/careychou/supertm-desktop/releases)** (see the [CHANGELOG](CHANGELOG.md)) and drag the app to Applications.
-2. The app is not code-signed, so run this once:
+2. The app is signed ad hoc but not notarized by Apple, so the first time you open it macOS says it **can't verify the developer**. Click **Done**, then open **System Settings → Privacy & Security**, scroll to *"SuperTM Desktop" was blocked…* and click **Open Anyway** (once). Or skip the prompt with:
    ```bash
    xattr -cr "/Applications/SuperTM Desktop.app"
    ```
+   Open the copy in **Applications**, not the one inside the disk image. If macOS says the app **is damaged and can't be opened**, you have a build from before 1.2.5 (missing signature): drag it to Applications and run the `xattr` command above, or download the latest release.
+   After installing a new version, macOS may ask once for your **login password** so the app can read its saved keys (*"SuperTM Desktop wants to use your confidential information stored in 'SuperTM Desktop Safe Storage'"*). Enter it and click **Always Allow**. The app is signed ad hoc, so macOS treats each build as a new app and asks again after every update. If the window stays blank while the prompt is open, answer it and reopen the app.
 3. Open it and continue with the [tutorial](doc/tutorial.md).
 
 ## What it does

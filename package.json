@@ -1,6 +1,6 @@
 {
   "name": "supertm-desktop",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "Lightweight Copilot-like desktop agent for custom models",
   "main": "out/main/index.js",
   "type": "commonjs",
@@ -35,7 +35,9 @@
           ]
         }
       ],
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "identity": "-",
+      "hardenedRuntime": false
     },
     "artifactName": "supertm-desktop-${version}-${arch}.${ext}",
     "publish": null
