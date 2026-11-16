@@ -1,5 +1,11 @@
 # Release notes
 
+## 1.2.6
+
+### Fix: Gemini 3.x tool calls on Google Vertex
+- Gemini 3 models (e.g. `google/gemini-3.8-flash`, `google/gemini-4-argon`) failed as soon as they used a tool, with *Function call is missing a thought_signature*
+- The app now keeps the `thought_signature` Gemini attaches to each tool call and sends it back on the next request. It is only sent to `google/*` models, so switching a chat to another provider still works
+
 ## 1.2.5
 
 ### Fix: downloaded app no longer reported as "damaged"

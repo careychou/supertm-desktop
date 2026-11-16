@@ -2,6 +2,8 @@ export interface ToolCall {
   id: string
   type: 'function'
   function: { name: string; arguments: string }
+  /** Provider data that must be echoed back with the call (Gemini's thought_signature). */
+  extra_content?: unknown
 }
 
 export type ContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }
@@ -15,7 +17,7 @@ export type Message =
 export type Delta =
   | { type: 'text'; text: string }
   | { type: 'reasoning'; text: string }
-  | { type: 'tool_call'; index: number; id?: string; name?: string; args?: string }
+  | { type: 'tool_call'; index: number; id?: string; name?: string; args?: string; extra?: unknown }
   /** `model`: the model that actually served the call, when the provider reports it (Azure: deployment → model). */
   | { type: 'usage'; prompt: number; completion: number; cached?: number; cacheWrite?: number; model?: string }
   | { type: 'finish'; reason: string }

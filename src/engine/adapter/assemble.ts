@@ -6,7 +6,7 @@ let seq = 0
 export class Assembler {
   private text = ''
   private reasoning = ''
-  private calls = new Map<number, { id?: string; name: string; args: string }>()
+  private calls = new Map<number, { id?: string; name: string; args: string; extra?: unknown }>()
   finishReason = ''
 
   push(d: Delta): void {
@@ -19,6 +19,7 @@ export class Assembler {
         if (d.id) c.id = d.id
         if (d.name) c.name += c.name && c.name === d.name ? '' : d.name
         if (d.args) c.args += d.args
+        if (d.extra !== undefined) c.extra = d.extra
         this.calls.set(d.index, c)
       }
     }
@@ -27,7 +28,7 @@ export class Assembler {
   message(): Extract<Message, { role: 'assistant' }> {
     const tool_calls: ToolCall[] = [...this.calls.entries()]
       .sort((a, b) => a[0] - b[0])
-      .map(([, c]) => ({ id: c.id ?? `call_${Date.now().toString(36)}_${seq++}`, type: 'function', function: { name: c.name, arguments: c.args || '{}' } }))
+      .map(([, c]) => ({ id: c.id ?? `call_${Date.now().toString(36)}_${seq++}`, type: 'function', function: { name: c.name, arguments: c.args || '{}' }, ...(c.extra !== undefined ? { extra_content: c.extra } : {}) }))
     const m: Extract<Message, { role: 'assistant' }> = { role: 'assistant', content: this.text || null }
     if (this.reasoning) m.reasoning = this.reasoning
     if (tool_calls.length) m.tool_calls = tool_calls

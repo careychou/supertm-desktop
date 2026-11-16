@@ -21,10 +21,12 @@ export interface AdapterConfig {
 }
 
 /** Strips engine-only fields before sending messages upstream. */
-function wireMessages(msgs: Message[], budget?: RequestBudget): unknown[] {
+// Gemini rejects a tool-call turn sent back without its thought_signature; other endpoints may reject the unknown field
+function wireMessages(msgs: Message[], budget?: RequestBudget, keepExtra = false): unknown[] {
   return fitMessages(msgs, budget).map((m) => {
     if (m.role === 'assistant') {
       const { reasoning: _r, ...rest } = m
+      if (!keepExtra && rest.tool_calls?.some((c) => c.extra_content !== undefined)) rest.tool_calls = rest.tool_calls.map(({ extra_content: _x, ...c }) => c)
       return rest
     }
     return m
@@ -68,7 +70,7 @@ export class OpenAIAdapter implements ModelAdapter {
     if (this.azure && this.responsesOnly.has(req.model)) return yield* this.streamResponses(req, signal)
     const body: Record<string, unknown> = {
       model: req.model,
-      messages: wireMessages(req.messages, this.cfg.budget?.()),
+      messages: wireMessages(req.messages, this.cfg.budget?.(), req.model.startsWith('google/')),
       stream: true,
       stream_options: { include_usage: true }
     }
@@ -124,7 +126,7 @@ export class OpenAIAdapter implements ModelAdapter {
         else yield* think.push(d.content)
       }
       for (const tc of d.tool_calls ?? []) {
-        yield { type: 'tool_call', index: tc.index ?? 0, id: tc.id, name: tc.function?.name, args: tc.function?.arguments }
+        yield { type: 'tool_call', index: tc.index ?? 0, id: tc.id, name: tc.function?.name, args: tc.function?.arguments, ...(tc.extra_content ? { extra: tc.extra_content } : {}) }
       }
       if (ch.finish_reason) yield { type: 'finish', reason: ch.finish_reason }
     }

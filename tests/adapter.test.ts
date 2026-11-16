@@ -131,4 +131,28 @@ describe('OpenAIAdapter reasoning', () => {
     expect(out).toContainEqual({ type: 'reasoning', text: '**Plan**\n\n' })
     expect(out).toContainEqual({ type: 'text', text: 'Done' })
   })
+
+  it("keeps Gemini's thought_signature on tool calls and sends it back only to google/ models", async () => {
+    const bodies: any[] = []
+    const srv = await server((req, res) => {
+      let b = ''
+      req.on('data', (c) => (b += c))
+      req.on('end', () => {
+        bodies.push(JSON.parse(b))
+        res.writeHead(200, { 'content-type': 'text/event-stream' })
+        res.write('data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"c1","type":"function","extra_content":{"google":{"thought_signature":"SIG"}},"function":{"name":"shell","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}\n\n')
+        res.end('data: [DONE]\n\n')
+      })
+    })
+    const ad = new OpenAIAdapter({ baseUrl: srv.url, apiKey: 'k' })
+    const asm = new Assembler()
+    for await (const d of ad.stream({ model: 'google/gemini-3.8-flash', messages: [] }, new AbortController().signal)) asm.push(d)
+    const msg = asm.message()
+    expect(msg.tool_calls?.[0].extra_content).toEqual({ google: { thought_signature: 'SIG' } })
+    const history = [{ role: 'user' as const, content: 'go' }, msg, { role: 'tool' as const, tool_call_id: 'c1', content: 'ok' }]
+    for (const model of ['google/gemini-3.8-flash', 'gpt-5.5']) for await (const _ of ad.stream({ model, messages: history }, new AbortController().signal)) { /* drain */ }
+    srv.close()
+    expect(bodies[1].messages[1].tool_calls[0].extra_content).toEqual({ google: { thought_signature: 'SIG' } })
+    expect(bodies[2].messages[1].tool_calls[0]).not.toHaveProperty('extra_content')
+  })
 })
