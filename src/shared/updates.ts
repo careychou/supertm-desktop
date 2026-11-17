@@ -83,6 +83,31 @@ export function parseReleases(src: UpdateSource, json: unknown, arch: string): R
   return out.sort((a, b) => compareVersions(b.version, a.version))
 }
 
+/**
+ * Why a private GitLab release list refused the request, in words that say what to fix.
+ * GitLab answers 401 for a bad token, 403 for a token without API scope, and 404 when the token's account cannot see the project.
+ */
+export function gitlabAuthError(status: number, body: string, hasToken: boolean): string {
+  if (!hasToken) return 'The release list is private and no GitLab token is saved. Save one, then check again.'
+  if (status === 401) return 'GitLab rejected the saved token: it has expired, was revoked, or was mistyped. Create a new token and save it.'
+  if (status === 403) return /insufficient_scope|scope/i.test(body)
+    ? 'The saved GitLab token lacks the read_api scope, which reading releases needs (read_repository alone is not enough). Create a token with read_api and save it.'
+    : 'GitLab refused the saved token for this project\'s releases (403). Check that the token has the read_api scope and that your account can see the project.'
+  return 'The account behind the saved GitLab token cannot see the release project. Ask to be added to it, then check again.'
+}
+
+/** Splits a CHANGELOG ("## 1.3.15" sections) into versions, newest first as written. */
+export function parseChangelog(md: string): Array<{ version: string; notes: string }> {
+  const out: Array<{ version: string; notes: string }> = []
+  const parts = String(md ?? '').split(/^##[ \t]+v?(\d+\.\d+\.\d+)[^\n]*$/m)
+  for (let i = 1; i + 1 < parts.length; i += 2) {
+    // links into the repository do not resolve inside the app: keep their text
+    const notes = parts[i + 1].replace(/\[([^\]]+)\]\((?!https?:|mailto:)[^)]*\)/g, '$1').trim()
+    out.push({ version: parts[i], notes })
+  }
+  return out
+}
+
 /** "/Applications/X.app/Contents/MacOS/X" → "/Applications/X.app"; null outside an app bundle (e.g. dev). */
 export function appBundlePath(execPath: string): string | null {
   const m = /^(.*?\.app)\/Contents\/MacOS\/[^/]+$/.exec(execPath)

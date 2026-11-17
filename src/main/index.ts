@@ -202,7 +202,11 @@ function registerIpc() {
   ipcMain.handle('send', (_e, id: string, prompt: string, atts: Attachment[] = [], qid?: string) => {
     const row = store.getSession(id)
     const title = prompt.trim() || atts.map((a) => a.name).join(', ')
-    if (row && row.title === 'New chat' && title) store.updateSession(id, { title: title.replace(/\s+/g, ' ').slice(0, 60) })
+    if (row && row.title === 'New chat' && title) {
+      store.updateSession(id, { title: title.replace(/\s+/g, ' ').slice(0, 60) })
+      // show the new chat in the sidebar as soon as it is submitted, not when its first reply finishes
+      pushSessions()
+    }
     void run(id, getLive(id), prompt, atts, qid)
   })
   ipcMain.handle('unqueue', (_e, id: string, qid: string) => live.get(id)?.unqueue(qid) ?? false)

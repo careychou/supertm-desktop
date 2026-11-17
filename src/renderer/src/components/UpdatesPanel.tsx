@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { PushEvent } from '../../../shared/api'
-import type { UpdateCheck, UpdateState } from '../../../shared/updates'
+import { compareVersions, parseChangelog, type UpdateCheck, type UpdateState } from '../../../shared/updates'
+import changelog from '../../../../CHANGELOG.md?raw'
 import { Markdown } from '../Markdown'
+
+/** Release notes that ship inside the app, so they can be read without access to the release site. */
+const HISTORY = parseChangelog(changelog)
 
 const mb = (n: number) => `${(n / 1048576).toFixed(1)} MB`
 const day = (d: string) => (d ? new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '')
@@ -71,6 +75,26 @@ export function UpdatesPanel({ onSecrets }: { onSecrets?(): void }) {
           </div>
         </>
       )}
+      <WhatsNew current={check?.current} />
     </div>
+  )
+}
+
+/** Notes for this version and earlier ones, from the changelog built into the app. */
+function WhatsNew({ current }: { current?: string }) {
+  const list = (current ? HISTORY.filter((h) => compareVersions(h.version, current) <= 0) : HISTORY).slice(0, 20)
+  if (!list.length) return null
+  return (
+    <>
+      <div className="updates-head"><b>Release notes</b><span className="muted small">What changed in this version and earlier ones</span></div>
+      <div className="release-list">
+        {list.map((h, i) => (
+          <details key={h.version} className="release" open={i === 0}>
+            <summary><b>{h.version}</b>{h.version === current && <span className="muted small">this version</span>}</summary>
+            <div className="release-notes">{h.notes ? <Markdown text={h.notes} /> : <span className="muted">No release notes.</span>}</div>
+          </details>
+        ))}
+      </div>
+    </>
   )
 }

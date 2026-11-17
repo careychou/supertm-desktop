@@ -5,7 +5,7 @@ import os from 'node:os'
 import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import { BRAND } from '../shared/brand'
-import { appBundlePath, compareVersions, parseReleases, type ReleaseInfo, type UpdateCheck, type UpdateSource, type UpdateState } from '../shared/updates'
+import { appBundlePath, compareVersions, gitlabAuthError, parseReleases, type ReleaseInfo, type UpdateCheck, type UpdateSource, type UpdateState } from '../shared/updates'
 import type { PushEvent } from '../shared/api'
 
 const run = promisify(execFile)
@@ -54,7 +54,7 @@ export function registerUpdates(ipcMain: IpcMain, o: Opts): { checkInBackground(
     try {
       const r = await fetch(listUrl(src), { headers: authHeaders(src, token), signal: AbortSignal.timeout(20_000) })
       if ((r.status === 401 || r.status === 403 || r.status === 404) && src.provider === 'gitlab')
-        return { ...base, needsToken: true, error: token ? 'The saved GitLab token cannot read this project\'s releases.' : 'The release list is private. Save a GitLab token first.' }
+        return { ...base, needsToken: true, error: gitlabAuthError(r.status, await r.text().catch(() => ''), !!token) }
       if (!r.ok) return { ...base, error: `Release server returned ${r.status} ${r.statusText}` }
       const all = parseReleases(src, await r.json(), process.arch)
       lastCheck = { ...base, latest: all[0]?.version, newer: all.filter((x) => compareVersions(x.version, current) > 0) }

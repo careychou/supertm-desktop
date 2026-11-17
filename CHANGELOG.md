@@ -1,5 +1,13 @@
 # Release notes
 
+## 1.2.12
+
+### Release notes inside the app
+- **Settings → About** now shows the release notes for your version and earlier ones, built into the app. You no longer need to open GitHub to read them, and they show even when the update check fails
+
+### Fixed
+- **A new chat shows in the sidebar as soon as you send its first prompt.** Before, it only appeared once the first reply had finished, so you could not switch to another chat and come back while it was working. The blue pulsing dot marks a chat that is still running
+
 ## 1.2.11
 
 ### Work with Excel, without an add-in
