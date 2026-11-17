@@ -1,5 +1,12 @@
 # Release notes
 
+## 1.2.10
+
+### Claude on Azure AI Foundry
+- Claude deployments on Azure (e.g. `claude-…`) failed with *HTTP 404: Requested API is currently not supported*: Azure serves Claude only through the Anthropic Messages API, not chat/completions
+- Deployments whose name contains `claude` now go to `/anthropic/v1/messages` on the same resource host and API key, with the same thinking, tools, images and prompt caching as Claude on Google Vertex. Nothing to change in Settings
+- Any other deployment that answers chat/completions with *not supported* is retried on the Anthropic API once, and remembered
+
 ## 1.2.9
 
 ### Check for updates from inside the app

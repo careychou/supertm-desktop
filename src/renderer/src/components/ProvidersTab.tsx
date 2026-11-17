@@ -117,6 +117,7 @@ export function ProvidersTab({ s, setS }: { s: Settings; setS(s: Settings): void
                   <label>Deployment names (one per line; each becomes a model)
                     <textarea rows={3} value={(p.deployments ?? []).join('\n')} placeholder={'gpt-5\ngpt-4.1-mini'} onChange={(e) => upd(p.id, { deployments: e.target.value.split('\n') })} />
                   </label>
+                  <p className="muted small">Claude deployments (names containing <code>claude</code>) use Azure's Anthropic Messages API on the same host and key; nothing else to set.</p>
                   <details className="prov-extra">
                     <summary>Usage &amp; billing (optional)</summary>
                     <p className="muted small">The AI usage panel reads this resource's token metrics (Azure Monitor) and billed cost (Cost Management). Leave blank to use the signed-in Azure CLI (<code>az login</code>) and find the resource by its host name. Needs Monitoring Reader, plus Cost Management Reader for billed $.</p>

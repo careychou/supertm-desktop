@@ -108,6 +108,42 @@ describe('Azure OpenAI adapter', () => {
     f.close()
   })
 
+  const anthropicSse = [
+    { type: 'message_start', message: { usage: { input_tokens: 5, output_tokens: 0 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'PONG' } },
+    { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 2 } },
+    { type: 'message_stop' }
+  ].map((e) => `data: ${JSON.stringify(e)}\n\n`).join('')
+
+  it('sends Claude deployments to the Anthropic Messages API with x-api-key', async () => {
+    const f = await fake(() => ({ status: 200, body: anthropicSse }))
+    const a = new OpenAIAdapter({ kind: 'azure', baseUrl: `${f.host}/openai/`, apiKey: 'az', deployments: ['claude-fable-5-2'] })
+    const r = { model: 'claude-fable-5-2', reasoning: 'high' as const, messages: [{ role: 'system' as const, content: 'sys' }, { role: 'user' as const, content: 'hi' }] }
+    expect(await text(a.stream(r, new AbortController().signal))).toBe('PONG')
+    const h = f.hits[0]
+    expect(f.hits.length).toBe(1)
+    expect(h.url).toBe('/anthropic/v1/messages')
+    expect(h.headers['x-api-key']).toBe('az')
+    expect(h.headers['anthropic-version']).toBe('2023-06-01')
+    expect(h.headers['api-key']).toBeUndefined()
+    expect(h.body).toMatchObject({ model: 'claude-fable-5-2', stream: true, thinking: { type: 'adaptive' }, output_config: { effort: 'high' } })
+    expect(h.body.anthropic_version).toBeUndefined()
+    expect(h.body.system[0].text).toBe('sys')
+    f.close()
+  })
+
+  it('switches a deployment to the Anthropic API when chat/completions says the API is not supported', async () => {
+    const f = await fake((h) => h.url.includes('/chat/completions')
+      ? { status: 404, body: '{"error":{"code":"404","message":"Requested API is currently not supported"}}' }
+      : { status: 200, body: anthropicSse })
+    const a = new OpenAIAdapter({ kind: 'azure', baseUrl: f.host, apiKey: 'az', deployments: ['my-model'] })
+    expect(await text(a.stream(req('my-model'), new AbortController().signal))).toBe('PONG')
+    expect(await text(a.stream(req('my-model'), new AbortController().signal))).toBe('PONG')
+    expect(f.hits.map((h) => h.url)).toEqual(['/openai/deployments/my-model/chat/completions?api-version=2025-04-01-preview', '/anthropic/v1/messages', '/anthropic/v1/messages'])
+    f.close()
+  })
+
   it('lists the configured deployments as models without a network call', async () => {
     const a = new OpenAIAdapter({ kind: 'azure', baseUrl: 'https://x.openai.azure.com', apiKey: 'k', deployments: [' gpt-5 ', '', 'mini'] })
     expect(await a.listModels()).toEqual(['gpt-5', 'mini'])

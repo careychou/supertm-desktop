@@ -2,6 +2,7 @@ import type { ChatRequest, Delta, Message, ModelAdapter } from '../types'
 import { parseSSE } from './sse'
 import { fitRequest, type RequestBudget } from '../content'
 import { responsesBody, responsesDeltas } from './responses'
+import { anthropicDeltas, toAnthropic, type AnthropicTtl } from './anthropic'
 
 export interface AdapterConfig {
   baseUrl: string
@@ -18,6 +19,8 @@ export interface AdapterConfig {
   fetch?: (url: string, init: RequestInit) => Promise<Response>
   /** Last-moment edit of the request body (Vertex: reasoning field rules). */
   shape?: (body: Record<string, any>) => void
+  /** Azure Claude deployments: prompt-cache TTL (`off` disables cache breakpoints). */
+  cacheTtl?: AnthropicTtl
 }
 
 /** Strips engine-only fields before sending messages upstream. */
@@ -34,6 +37,11 @@ function wireMessages(msgs: Message[], budget?: RequestBudget, keepExtra = false
 }
 
 export const AZURE_API_VERSION = '2025-04-01-preview'
+/** anthropic-version header for Claude on Azure AI Foundry. */
+export const AZURE_ANTHROPIC_VERSION = '2023-06-01'
+
+/** Azure deployments served only by the Anthropic Messages API (Claude), judged by name. */
+export const isAzureClaude = (deployment: string) => /(^|[-_/])claude/i.test(deployment)
 
 /** Azure resource host without trailing slash or /openai suffix. */
 const azureHost = (u: string) => u.trim().replace(/\/+$/, '').replace(/\/openai(\/v1)?$/, '')
@@ -41,6 +49,8 @@ const azureHost = (u: string) => u.trim().replace(/\/+$/, '').replace(/\/openai(
 export class OpenAIAdapter implements ModelAdapter {
   /** Azure deployments that refused function tools on chat/completions; they go to /openai/v1/responses. */
   private responsesOnly = new Set<string>()
+  /** Azure deployments answered by /anthropic/v1/messages: Claude by name, or any that 404s on chat/completions. */
+  private anthropic = new Set<string>()
   constructor(private cfg: AdapterConfig) {}
 
   private get azure() { return this.cfg.kind === 'azure' }
@@ -67,6 +77,7 @@ export class OpenAIAdapter implements ModelAdapter {
   }
 
   async *stream(req: ChatRequest, signal: AbortSignal): AsyncIterable<Delta> {
+    if (this.azure && (this.anthropic.has(req.model) || isAzureClaude(req.model))) return yield* this.streamAnthropic(req, signal)
     if (this.azure && this.responsesOnly.has(req.model)) return yield* this.streamResponses(req, signal)
     const body: Record<string, unknown> = {
       model: req.model,
@@ -90,6 +101,14 @@ export class OpenAIAdapter implements ModelAdapter {
       signal
     })
     let res = await post()
+    // Claude (and other non-OpenAI models) on Azure AI Foundry: chat/completions says "Requested API is currently not supported"
+    if (this.azure && res.status === 404) {
+      const t = await res.clone().text().catch(() => '')
+      if (/not supported/i.test(t)) {
+        this.anthropic.add(req.model)
+        return yield* this.streamAnthropic(req, signal)
+      }
+    }
     // Some Azure models (e.g. gpt-6.1-sol) only take function tools on the Responses API
     if (this.azure && res.status === 400 && body.tools) {
       const t = await res.clone().text().catch(() => '')
@@ -131,6 +150,19 @@ export class OpenAIAdapter implements ModelAdapter {
       if (ch.finish_reason) yield { type: 'finish', reason: ch.finish_reason }
     }
     yield* think.flush()
+  }
+
+  /** Claude on Azure AI Foundry: Anthropic Messages API on the same resource host and key. */
+  private async *streamAnthropic(req: ChatRequest, signal: AbortSignal): AsyncIterable<Delta> {
+    const body = { ...toAnthropic(fitMessages(req.messages, this.cfg.budget?.()), req, this.cfg.cacheTtl ?? '5m'), model: req.model, stream: true }
+    const res = await (this.cfg.fetch ?? fetch)(`${azureHost(this.cfg.baseUrl)}/anthropic/v1/messages`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': this.cfg.apiKey, 'anthropic-version': AZURE_ANTHROPIC_VERSION },
+      body: JSON.stringify(body),
+      signal
+    })
+    await failIfBad(res)
+    yield* anthropicDeltas(parseSSE(res.body as unknown as AsyncIterable<Uint8Array>))
   }
 
   private async *streamResponses(req: ChatRequest, signal: AbortSignal): AsyncIterable<Delta> {
