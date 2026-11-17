@@ -36,6 +36,7 @@ export type PushEvent =
   | { type: 'pluginsOpen'; folder: string }
   | { type: 'update'; state: UpdateState }
   | { type: 'updateAvailable'; version: string }
+  | { type: 'importProgress'; phase: 'scan' | 'import'; done: number; total: number }
 
 export interface RegistryInfo { skills: Array<{ name: string; description: string; source: string }>; agents: Array<{ name: string; description: string; source: string }>; warnings: string[] }
 

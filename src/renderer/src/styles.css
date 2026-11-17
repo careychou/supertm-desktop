@@ -558,3 +558,28 @@ button.danger { color: var(--fail); }
 .xl-status .dot { width: 8px; height: 8px; border-radius: 50%; background: #8c959f; flex: none; }
 .xl-status .dot.ok { background: var(--ok); }
 .xl-status .dot.warn { background: #bf8700; }
+
+/* shared dialog frame (Dialog.tsx): header buttons, drag-to-resize corner */
+.modal.resizable { resize: both; min-width: 420px; min-height: 220px; max-width: 98vw; max-height: 96vh; display: flex; flex-direction: column; }
+.modal.resizable > * { flex-shrink: 0; }
+.modal.resizable.expanded { resize: none; }
+.dialog-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.dialog-head .tabs { margin-bottom: 0; flex-wrap: wrap; flex: 1; min-width: 0; }
+.dialog-title { margin: 0; font-size: 18px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dialog-btns { display: flex; gap: 2px; margin-left: auto; align-self: flex-start; flex-shrink: 0; }
+.modal .icon-btn { border: 0; background: none; color: var(--muted); font-size: 15px; line-height: 1; width: 28px; height: 28px; padding: 0; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.modal .icon-btn:hover { background: var(--hover); color: var(--text); }
+.modal .icon-btn.close:hover { background: #ffebe9; color: #a40e26; }
+.modal .icon-btn:disabled { opacity: .35; cursor: default; background: none; }
+/* lists grow with a resized dialog instead of keeping a fixed cap */
+.modal.resizable[style*="height"] .sync-scroll, .modal.resizable[style*="height"] .turn-pick.tall, .modal.resizable[style*="height"] .tm-plugins, .modal.resizable[style*="height"] .release-list { max-height: none; }
+
+/* import progress + finish panel (Settings → Sync sessions) */
+.import-progress { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #f6f8fa; }
+.import-progress-label { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.import-progress-track { height: 6px; border-radius: 3px; background: #e5e7eb; overflow: hidden; position: relative; }
+.import-progress-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .15s ease; }
+.import-progress-track.indeterminate .import-progress-fill { position: absolute; width: 30%; animation: import-slide 1.1s ease-in-out infinite; }
+@keyframes import-slide { 0% { left: -30%; } 100% { left: 100%; } }
+.import-done { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid #aceebb; background: #dafbe1; color: #116329; border-radius: 8px; font-size: 13.5px; }
+.import-done.none { border-color: var(--line); background: #f6f8fa; color: var(--text); }

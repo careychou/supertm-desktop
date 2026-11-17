@@ -337,12 +337,25 @@ function registerIpc() {
   })
   ipcMain.handle('syncExport', (_e, dir: string, ids?: string[]) => exportSessions(store, dir, BRAND.name, Date.now(), ids))
   ipcMain.handle('importDefaults', () => externalDefaults())
+  // at most ~10 progress pushes a second, plus the final one
+  const progress = (phase: 'scan' | 'import') => {
+    let last = 0
+    return (done: number, total: number) => {
+      const now = Date.now()
+      if (done < total && now - last < 100) return
+      last = now
+      push({ type: 'importProgress', phase, done, total })
+    }
+  }
   ipcMain.handle('importScan', async (_e, kind: ExternalSource, dir: string) => {
     const root = kind === 'copilot' ? copilotRoot(dir) : dir
-    return { root, sessions: kind === 'copilot' ? await scanCopilot(root) : await scanClaude(root) }
+    const p = progress('scan')
+    return { root, sessions: kind === 'copilot' ? await scanCopilot(root, p) : await scanClaude(root, p) }
   })
   ipcMain.handle('importExternal', async (_e, kind: ExternalSource, root: string, ids: string[], dest?: string) => {
-    const r = await importExternal(store, kind, root, ids, settings.defaultModel, dest)
+    const p = progress('import')
+    const r = await importExternal(store, kind, root, ids, settings.defaultModel, dest, p)
+    p(ids.length, ids.length)
     pushSessions()
     return r
   })

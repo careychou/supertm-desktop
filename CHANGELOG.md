@@ -1,5 +1,17 @@
 # Release notes
 
+## 1.2.13
+
+### Import shows progress
+- **Settings → Sync sessions** shows a progress bar while it reads a Copilot or Claude Code folder and while it imports, with how many chats are done
+- When an import finishes, a summary replaces the list, with **Import more from this source**, and **Close** at the bottom of the tab
+
+### Dialogs you can resize and close
+- Every dialog (Settings, AI usage, memory, share, compact, export, plugins) has a **✕** close button and the **⤢** expand button in its top-right corner
+- Drag a dialog's bottom-right corner to resize it; each dialog remembers its size. Double-click ⤢ to go back to the default size
+- Settings → Skills & agents and Sync sessions now have a **Close** button at the bottom too
+- A drag that starts inside a dialog and ends outside it (selecting text, resizing) no longer closes it
+
 ## 1.2.12
 
 ### Release notes inside the app

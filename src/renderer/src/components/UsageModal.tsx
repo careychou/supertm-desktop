@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Dialog } from './Dialog'
 import type { UsageBucket, UsageReport } from '../../../shared/usage'
-import { useEscape } from '../hooks/useEscape'
 
 type Tab = 'local' | 'project' | 'azure'
 const RANGES = [{ d: 1, l: 'Today' }, { d: 7, l: '7 days' }, { d: 30, l: '30 days' }]
@@ -69,11 +69,8 @@ export function UsageModal({ onClose, onOpenChat }: { onClose(): void; onOpenCha
   useEffect(() => () => { void window.desk.cancelAzureLogin() }, [])
 
   const t = rep?.total
-  useEscape(onClose)
   return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal usage" onClick={(e) => e.stopPropagation()}>
-        <h2>AI usage</h2>
+    <Dialog id="usage" className="usage" title="AI usage" onClose={onClose}>
         <div className="usage-bar">
           <div className="seg">
             <button className={tab === 'local' ? 'on' : ''} onClick={() => setTab('local')}>This app</button>
@@ -125,8 +122,7 @@ export function UsageModal({ onClose, onOpenChat }: { onClose(): void; onOpenCha
           </>
         )}
         <div className="actions"><button onClick={onClose}>Close</button></div>
-      </div>
-    </div>
+    </Dialog>
   )
 }
 

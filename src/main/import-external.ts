@@ -139,7 +139,10 @@ async function countPrompts(file: string): Promise<number> {
   return n
 }
 
-export async function scanCopilot(root: string): Promise<SyncCandidate[]> {
+/** Reports done / total as sessions are read or imported, for a progress bar. */
+export type Progress = (done: number, total: number) => void
+
+export async function scanCopilot(root: string, onProgress?: Progress): Promise<SyncCandidate[]> {
   const stateDir = path.join(root, 'session-state')
   const dirs = new Set(fs.existsSync(stateDir) ? fs.readdirSync(stateDir).filter((d) => fs.existsSync(path.join(stateDir, d, 'events.jsonl'))) : [])
   const rows = withCopilotDb(root, (db) => {
@@ -165,8 +168,12 @@ export async function scanCopilot(root: string): Promise<SyncCandidate[]> {
       updated_at: ms(w.updated_at, ms(r?.updated_at)), parent_id: null, turns, local: null, group: w.cwd || r?.cwd || '(no folder)'
     })
   }
-  for (const r of rows) await add(r.id, r)
-  for (const d of dirs) if (!out.has(d)) await add(d)
+  const inDb = new Set(rows.map((r) => r.id))
+  const extra = [...dirs].filter((d) => !inDb.has(d))
+  const total = rows.length + extra.length
+  let done = 0
+  for (const r of rows) { await add(r.id, r); onProgress?.(++done, total) }
+  for (const d of extra) { await add(d); onProgress?.(++done, total) }
   return [...out.values()].sort((a, b) => b.updated_at - a.updated_at)
 }
 
@@ -226,9 +233,12 @@ const claudeUserText = (content: unknown): string => {
 const realPrompt = (e: any) => e.type === 'user' && !e.isMeta && !e.isSidechain && !e.isCompactSummary && (!e.origin?.kind || e.origin.kind === 'human')
   && (() => { const t = claudeUserText(e.message?.content).trim(); return !!t && !NOISE.test(t) })()
 
-export async function scanClaude(p: string): Promise<SyncCandidate[]> {
+export async function scanClaude(p: string, onProgress?: Progress): Promise<SyncCandidate[]> {
   const out: SyncCandidate[] = []
-  for (const file of claudeFiles(p)) {
+  const files = claudeFiles(p)
+  let done = 0
+  for (const file of files) {
+    onProgress?.(done++, files.length)
     let title = '', summary = '', first = '', cwd = '', start = 0, end = 0, turns = 0
     for await (const e of lines(file)) {
       if (e.type === 'custom-title' && e.customTitle) title = e.customTitle
@@ -292,11 +302,13 @@ function save(store: Store, r: SyncImportResult, src: { title: string; cwd: stri
 
 /** Imports chosen chats from another tool. Their IDs mean nothing here, so every chat gets a new UUID: never a conflict. */
 /** Each picked chat is added as new, filed under `dest` (a working folder on this Mac) instead of the other tool's folder. */
-export async function importExternal(store: Store, kind: ExternalSource, root: string, ids: string[], model: string, dest?: string): Promise<SyncImportResult> {
+export async function importExternal(store: Store, kind: ExternalSource, root: string, ids: string[], model: string, dest?: string, onProgress?: Progress): Promise<SyncImportResult> {
   const r: SyncImportResult = { added: 0, overwritten: 0, forked: 0, skipped: 0, ids: [] }
   if (kind === 'claude') {
     const known = new Set(claudeFiles(root))
+    let done = 0
     for (const file of ids) {
+      onProgress?.(done++, ids.length)
       if (!known.has(file)) { r.skipped++; continue }
       const conv = await convertClaude(file, model)
       save(store, r, { title: conv.title || firstPrompt(conv) || 'Claude session', cwd: dest || conv.cwd, created: conv.start, updated: conv.end, model }, conv)
@@ -316,7 +328,9 @@ export async function importExternal(store: Store, kind: ExternalSource, root: s
     }
     return m
   })
+  let done = 0
   for (const id of ids) {
+    onProgress?.(done++, ids.length)
     const s = meta.get(id)
     const w = yaml(path.join(stateDir, id, 'workspace.yaml'))
     const events = path.join(stateDir, id, 'events.jsonl')

@@ -278,9 +278,25 @@ Then:
 1. Browse the tree. It is grouped by working folder; use **Expand all / Collapse all** or **Filter**.
 2. Tick a folder to select everything in it, or tick single chats. The header shows how many are selected.
 3. Under **Import into working folder**, choose one of your working folders, or **Choose another folder…**. Only the chats are imported, not the other Mac's folder path, so you never get a second folder with the same name. Chats that already exist here (**Overwrite** / **Import as fork**) stay in their current folder.
-4. Click **Import N selected**. The chats appear in the sidebar under the folder you chose, with forks nested under their parent.
+4. Click **Import N selected**. A progress bar shows how many chats are done (reading a large Copilot or Claude Code folder shows it too):
+
+   ![Import in progress](images/tutorial/08b-import-progress.png)
+
+5. When it finishes, a summary replaces the list. The chats are in the sidebar under the folder you chose, with forks nested under their parent. Click **Import more from this source** to pick more chats from the same folder, choose another source above, or click **Close** at the bottom.
+
+   ![Import finished](images/tutorial/08c-import-done.png)
 
 Imported chats keep the full transcript, including tool calls and results. The model continues from a text-only version of the history.
+
+### Resize and close dialogs
+
+![Settings dialog with expand and close buttons](images/tutorial/10-dialog-frame.png)
+
+Every dialog (Settings, AI usage, memory, share, compact, export, plugins) has the same frame:
+
+- **✕** (top right) closes it. **Esc** or a click outside also closes it; a drag that ends outside does not.
+- **⤢ / ⤡** expands it to fill the window and shrinks it back.
+- Drag the **bottom-right corner** to resize it. The size is remembered for that dialog; double-click ⤢ to go back to the default size.
 
 ## 8. Which version am I running?
 

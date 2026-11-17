@@ -70,6 +70,17 @@ describe('Import from GitHub Copilot', () => {
     // importing again just adds another copy: never a conflict
     expect((await importExternal(store, 'copilot', root, ['s2'], 'm1')).added).toBe(1)
   })
+
+  it('reports progress while reading and importing, ending at done = total', async () => {
+    const root = copilotFixture()
+    const seen: Array<[number, number]> = []
+    await scanCopilot(root, (d, t) => seen.push([d, t]))
+    expect(seen.at(-1)).toEqual([seen.at(-1)![1], seen.at(-1)![1]])
+    expect(seen.every(([d, t]) => d <= t && t >= 2)).toBe(true)
+    const imp: Array<[number, number]> = []
+    await importExternal(store, 'copilot', root, ['s1', 's2'], 'm1', undefined, (d, t) => imp.push([d, t]))
+    expect(imp).toEqual([[0, 2], [1, 2]])
+  })
 })
 
 describe('Import from Claude Code', () => {

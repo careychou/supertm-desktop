@@ -1,6 +1,6 @@
 import { useState } from 'react'
+import { Dialog } from './Dialog'
 import type { Memory } from '../../../shared/memory'
-import { useEscape } from '../hooks/useEscape'
 
 interface Props {
   kind: 'session' | 'folder'
@@ -17,14 +17,11 @@ const fileName = (p: string) => p.split('/').pop() ?? p
 export function MemoryModal({ kind, target, memory, onSave, onClose }: Props) {
   const [notes, setNotes] = useState(memory.notes)
   const [files, setFiles] = useState(memory.files)
-  useEscape(onClose)
   const add = async () => { const p = await window.desk.pickMemories(); if (p.length) setFiles((f) => [...new Set([...f, ...p])]) }
   const dirty = notes !== memory.notes || files.join('\n') !== memory.files.join('\n')
   const folder = kind === 'folder'
   return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal share memory" onClick={(e) => e.stopPropagation()}>
-        <h2>{folder ? '🗂 Folder memory' : '🧠 Session memory'}</h2>
+    <Dialog id="memory" className="share memory" title={<>{folder ? '🗂 Folder memory' : '🧠 Session memory'}</>} onClose={onClose}>
         <p className="muted">
           {folder
             ? <>Shared by <b>every chat</b> in <code title={target}>{fileName(target)}</code>, new and existing. Use it for standing facts, preferences and decisions about this project.</>
@@ -51,7 +48,6 @@ export function MemoryModal({ kind, target, memory, onSave, onClose }: Props) {
           <button onClick={onClose}>Cancel</button>
           <button className="primary" disabled={!dirty} onClick={() => { onSave({ files, notes }); onClose() }}>Save</button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   )
 }

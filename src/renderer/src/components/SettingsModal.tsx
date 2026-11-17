@@ -5,8 +5,7 @@ import { BRAND } from '../../../shared/brand'
 import { ProvidersTab } from './ProvidersTab'
 import { SyncTab } from './SyncTab'
 import { UpdatesPanel } from './UpdatesPanel'
-import { useExpand } from '../hooks/useExpand'
-import { useEscape } from '../hooks/useEscape'
+import { Dialog } from './Dialog'
 
 type Tab = 'providers' | 'general' | 'excel' | 'compaction' | 'skills' | 'sync' | 'about'
 
@@ -15,12 +14,10 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
   const [groups, setGroups] = useState<ModelGroup[]>([])
   const [health, setHealth] = useState('')
   const [tab, setTab] = useState<Tab>(initialTab ?? 'providers')
-  const [big, toggleBig] = useExpand('settings')
   useEffect(() => {
     void window.desk.getSettings().then(setS)
     void window.desk.listModels().then((r) => setGroups(r.groups ?? []))
   }, [cwd])
-  useEscape(onClose)
   if (!s) return null
   const set = (k: keyof Settings, v: string | number) => setS({ ...s, [k]: v })
   const testAll = async () => {
@@ -32,12 +29,9 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
   const tabs: Array<[Tab, string]> = [['providers', 'Model providers'], ['general', 'General'], ['excel', 'Excel'], ['compaction', 'Memory compaction'], ['skills', 'Skills & agents'], ['sync', 'Sync sessions'], ['about', 'About']]
   const compactKnown = !s.compactModel || groups.some((g) => g.models.includes(s.compactModel))
   return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className={`modal settings${big ? ' expanded' : ''}`} onClick={(e) => e.stopPropagation()}>
-        <div className="tabs">
-          {tabs.map(([k, label]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{label}</button>)}
-          <button className="expand-toggle" onClick={toggleBig} title={big ? 'Shrink window' : 'Expand window'}>{big ? '⤡' : '⤢'}</button>
-        </div>
+    <Dialog id="settings" className="settings" onClose={onClose} head={
+      <div className="tabs">{tabs.map(([k, label]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{label}</button>)}</div>
+    }>
         {tab === 'providers' && <ProvidersTab s={s} setS={setS} />}
         {tab === 'general' && (
           <div className="form">
@@ -126,8 +120,13 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
             <button className="primary" onClick={async () => { await window.desk.saveSettings(s); onClose() }}>Save</button>
           </div>
         )}
-      </div>
-    </div>
+        {(tab === 'skills' || tab === 'sync') && (
+          <div className="row-actions modal-foot">
+            <div className="spacer" />
+            <button onClick={onClose}>Close</button>
+          </div>
+        )}
+    </Dialog>
   )
 }
 

@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 import { SessionTree, type TreeRow } from './SessionTree'
 import { ageDiff, type ImportSource, type SyncCandidate, type SyncChoice, type SyncManifest } from '../../../shared/sync'
 import { BRAND } from '../../../shared/brand'
-import { useEscape } from '../hooks/useEscape'
-import { useExpand } from '../hooks/useExpand'
+import { Dialog } from './Dialog'
 
 const KEY = 'syncDir'
 const when = (t: number) => new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
@@ -21,14 +20,27 @@ const SOURCES: Array<{ kind: ImportSource; label: string; hint: string }> = [
 
 type Row = TreeRow
 
+/** Determinate bar when the main process reports done / total; an indeterminate one until then. */
+function ProgressBar({ label, prog }: { label: string; prog: { done: number; total: number } | null }) {
+  const known = prog && prog.total > 0
+  const pct = known ? Math.round((prog.done / prog.total) * 100) : 0
+  return (
+    <div className="import-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={known ? pct : undefined} aria-label={label}>
+      <div className="import-progress-label">
+        <span>{label}</span>
+        {known && <span className="muted small">{prog.done} of {prog.total} · {pct}%</span>}
+      </div>
+      <div className={`import-progress-track${known ? '' : ' indeterminate'}`}><div className="import-progress-fill" style={known ? { width: `${pct}%` } : undefined} /></div>
+    </div>
+  )
+}
+
 /** Export step 2: after the destination is chosen, pick the chats to write. */
 function ExportDialog({ dir, onClose, onDone }: { dir: string; onClose(): void; onDone(msg: string): void }) {
   const [rows, setRows] = useState<Row[] | null>(null)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const [big, toggleBig] = useExpand('export')
-  useEscape(onClose)
   useEffect(() => {
     void window.desk.listSessions().then((l) => {
       const ui = l.sessions.map((s) => ({ id: s.id, title: s.title, cwd: s.cwd, updated_at: s.updated_at, turns: 0, parent_id: s.parent_id ?? null }))
@@ -44,9 +56,7 @@ function ExportDialog({ dir, onClose, onDone }: { dir: string; onClose(): void; 
     } catch (e) { setErr(`✗ ${clean(e)}`) } finally { setBusy(false) }
   }
   return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className={`modal sync-dialog${big ? ' expanded' : ''}`} onClick={(e) => e.stopPropagation()}>
-        <div className="dialog-head"><h3>Export sessions</h3><button className="expand-toggle" onClick={toggleBig} title={big ? 'Shrink window' : 'Expand window'}>{big ? '⤡' : '⤢'}</button></div>
+    <Dialog id="export" className="sync-dialog" title="Export sessions" onClose={onClose} closable={!busy}>
         <div className="muted small">To <b title={dir}>{dir}</b>. This replaces an earlier export in that folder. Every session is selected; uncheck the ones to leave out.</div>
         {rows ? <SessionTree rows={rows} picked={picked} setPicked={setPicked} /> : <div className="muted">Loading…</div>}
         <div className="row-actions modal-foot">
@@ -55,8 +65,7 @@ function ExportDialog({ dir, onClose, onDone }: { dir: string; onClose(): void; 
           <button onClick={onClose}>Cancel</button>
           <button className="primary" disabled={busy || picked.size === 0} onClick={go}>{busy ? 'Exporting…' : `Export ${plural(picked.size, 'session')}`}</button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   )
 }
 
@@ -73,37 +82,43 @@ export function SyncTab() {
   // where new chats go on this Mac; the source's folder path is never brought over
   const [dest, setDest] = useState('')
   const [folders, setFolders] = useState<string[]>([])
+  const [prog, setProg] = useState<{ done: number; total: number } | null>(null)
+  // set after an import finishes: the summary, with Import more / Close instead of the picker
+  const [result, setResult] = useState<{ text: string; ok: boolean } | null>(null)
+  useEffect(() => window.desk.onPush((p) => { if (p.type === 'importProgress') setProg({ done: p.done, total: p.total }) }), [])
 
   const act = async (label: string, f: () => Promise<void>) => {
-    setBusy(label); setMsg('')
-    try { await f() } catch (e) { setMsg(`✗ ${clean(e)}`) } finally { setBusy('') }
+    setBusy(label); setMsg(''); setProg(null)
+    try { await f() } catch (e) { setMsg(`✗ ${clean(e)}`) } finally { setBusy(''); setProg(null) }
   }
   const startExport = async () => {
     const d = await window.desk.pickFolder({ defaultPath: localStorage.getItem(KEY) ?? undefined, title: 'Export sessions to…', buttonLabel: 'Choose destination' })
     if (!d) return
     localStorage.setItem(KEY, d); setMsg(''); setExportDir(d)
   }
-  const startImport = (kind: ImportSource) => act('Reading sessions…', async () => {
+  const startImport = async (kind: ImportSource) => {
     const defaults = kind === 'owned' ? null : await window.desk.importDefaults()
     const last = localStorage.getItem(`${KEY}:${kind}`) ?? (kind === 'owned' ? localStorage.getItem(KEY) : defaults?.[kind])
     const label = SOURCES.find((s) => s.kind === kind)!.label
     const d = await window.desk.pickFolder({ defaultPath: last ?? undefined, title: `Import from ${label}`, buttonLabel: 'Read sessions' })
     if (!d) return
-    localStorage.setItem(`${KEY}:${kind}`, d)
-    setScan(null); setChoice({}); setDest('')
-    setFolders((await window.desk.listSessions()).folders.map((f) => f.path))
-    if (kind === 'owned') {
-      const r = await window.desk.syncScan(d)
-      setScan({ kind, root: r.file, manifest: r.manifest, sessions: r.sessions })
-      setPicked(new Set(r.sessions.filter((s) => !s.local).map((s) => s.id)))
-      if (!r.sessions.length) setMsg('The export has no sessions.')
-    } else {
-      const r = await window.desk.importScan(kind, d)
-      setScan({ kind, root: r.root, manifest: null, sessions: r.sessions })
-      setPicked(new Set())
-      if (!r.sessions.length) setMsg(`No ${label} sessions with turns in that folder.`)
-    }
-  })
+    await act('Reading sessions…', async () => {
+      localStorage.setItem(`${KEY}:${kind}`, d)
+      setScan(null); setChoice({}); setDest(''); setResult(null)
+      setFolders((await window.desk.listSessions()).folders.map((f) => f.path))
+      if (kind === 'owned') {
+        const r = await window.desk.syncScan(d)
+        setScan({ kind, root: r.file, manifest: r.manifest, sessions: r.sessions })
+        setPicked(new Set(r.sessions.filter((s) => !s.local).map((s) => s.id)))
+        if (!r.sessions.length) setMsg('The export has no sessions.')
+      } else {
+        const r = await window.desk.importScan(kind, d)
+        setScan({ kind, root: r.root, manifest: null, sessions: r.sessions })
+        setPicked(new Set())
+        if (!r.sessions.length) setMsg(`No ${label} sessions with turns in that folder.`)
+      }
+    })
+  }
   const chooseDest = async (v: string) => {
     if (v !== PICK) return setDest(v)
     const d = await window.desk.pickFolder({ title: 'Import into working folder', buttonLabel: 'Use this folder' })
@@ -124,7 +139,8 @@ export function SyncTab() {
       r = await window.desk.importExternal(scan.kind, scan.root, [...picked], dest)
     }
     const parts = [r.added && `${r.added} added`, r.overwritten && `${r.overwritten} overwritten`, r.forked && `${r.forked} imported as fork${r.forked === 1 ? '' : 's'}`, r.skipped && `${r.skipped} skipped`].filter(Boolean)
-    setMsg(`✓ ${parts.join(', ') || 'Nothing imported'}`)
+    const where = dest ? ` into ${base(dest)}` : ''
+    setResult({ ok: parts.length > 0, text: parts.length ? `Imported: ${parts.join(', ')}${where}. The chats are in the sidebar.` : 'Nothing was imported.' })
     setPicked(new Set())
   })
 
@@ -153,9 +169,20 @@ export function SyncTab() {
           </button>
         ))}
       </div>
-      {(busy || msg) && <div className="muted small">{busy || msg}</div>}
+      {busy && <ProgressBar label={busy} prog={prog} />}
+      {!busy && msg && <div className="muted small">{msg}</div>}
 
-      {scan && list.length > 0 && <>
+      {result && !busy && (
+        <div className={`import-done${result.ok ? '' : ' none'}`}>
+          <div>{result.ok ? '✓ ' : ''}{result.text}</div>
+          <div className="row-actions">
+            <div className="spacer" />
+            {scan && scan.sessions.length > 0 && <button onClick={() => setResult(null)}>Import more from this source</button>}
+          </div>
+        </div>
+      )}
+
+      {scan && list.length > 0 && !result && <>
         <div className="muted small">
           <b>{srcLabel}</b>{' · '}
           {scan.manifest ? <>exported {when(scan.manifest.exportedAt)} from <b>{scan.manifest.host}</b> · </> : <span title={scan.root}>{scan.root} · </span>}
@@ -188,7 +215,7 @@ export function SyncTab() {
         </div>}
         <div className="row-actions">
           <div className="spacer" />
-          <button className="primary" disabled={!!busy || picked.size === 0 || (needsDest && !dest)} onClick={doImport}>Import {picked.size || ''} selected</button>
+          <button className="primary" disabled={!!busy || picked.size === 0 || (needsDest && !dest)} onClick={doImport}>{busy === 'Importing…' ? 'Importing…' : `Import ${picked.size || ''} selected`}</button>
         </div>
       </>}
 

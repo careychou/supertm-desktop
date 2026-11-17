@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Dialog } from './Dialog'
 import type { SessionRow } from '../../../shared/api'
 import { exportMarkdown, splitTurns, type ExportItem } from '../../../shared/export'
 import { BRAND } from '../../../shared/brand'
-import { useEscape } from '../hooks/useEscape'
 
 interface Props {
   session: SessionRow
@@ -29,11 +29,8 @@ export function ShareModal({ session, onClose }: Props) {
   const save = async () => { const p = await window.desk.saveExport(session.title, md()); if (p) setSaved(p) }
   const copy = async () => { await window.desk.copyText(md()); setCopied(true); setTimeout(() => setCopied(false), 1500) }
 
-  useEscape(onClose)
   return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal share" onClick={(e) => e.stopPropagation()}>
-        <h2>Share session</h2>
+    <Dialog id="share" className="share" title="Share session" onClose={onClose}>
         <p className="muted">Exports to a Markdown file. Anyone can read it, and any {BRAND.title} chat can attach it as <b>memory</b>.</p>
         <div className="seg">
           <button className={all ? 'on' : ''} onClick={() => setAll(true)}>All turns ({turns.length})</button>
@@ -65,7 +62,6 @@ export function ShareModal({ session, onClose }: Props) {
           <button onClick={copy} disabled={!items || !selected.length}>{copied ? 'Copied ✓' : 'Copy Markdown'}</button>
           <button className="primary" onClick={save} disabled={!items || !selected.length}>Save .md…</button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   )
 }

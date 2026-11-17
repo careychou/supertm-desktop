@@ -145,7 +145,7 @@ export function App() {
         return
       }
       if (p.type === 'pluginsLog') return
-      if (p.type === 'update') return
+      if (p.type === 'update' || p.type === 'importProgress') return
       if (p.type === 'updateAvailable') { setAppUpdate(p.version); return }
       if (p.type === 'busy') setBusyIds((prev) => { const n = new Set(prev); p.busy ? n.add(p.sessionId) : n.delete(p.sessionId); return n })
       const mine = p.sessionId === currentRef.current?.id

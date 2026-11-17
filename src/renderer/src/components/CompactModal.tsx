@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Dialog } from './Dialog'
 import type { SessionRow, TurnAnalysis } from '../../../shared/api'
-import { useEscape } from '../hooks/useEscape'
 
 interface Props {
   session: SessionRow
@@ -81,11 +81,8 @@ export function CompactModal({ session, keepRecentDefault, onClose, onDone }: Pr
     </div>
   )
 
-  useEscape(onClose, !working)
   return (
-    <div className="modal-bg" onClick={working ? undefined : onClose}>
-      <div className="modal share compact" onClick={(e) => e.stopPropagation()}>
-        <h2>Compact history</h2>
+    <Dialog id="compact" className="share compact" title="Compact history" onClose={onClose} closable={!working}>
         <p className="muted">Shrink what the agent carries forward. The chat view keeps every turn either way.</p>
         {err && <div className="err">{err}</div>}
         {!a && !err && <div className="working"><span className="spinner" /> Reading turns and finding related ones…</div>}
@@ -160,7 +157,6 @@ export function CompactModal({ session, keepRecentDefault, onClose, onDone }: Pr
           <button onClick={onClose} disabled={working}>Cancel</button>
           <button className="primary" onClick={go} disabled={!a || working || nothing}>{working ? 'Compacting…' : 'Compact'}</button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   )
 }
