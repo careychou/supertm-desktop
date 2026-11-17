@@ -6,6 +6,8 @@
 - **Settings → About** now shows the release notes for your version and earlier ones, built into the app. You no longer need to open GitHub to read them, and they show even when the update check fails
 
 ### Fixed
+- **"fetch failed" on the update check.** That message meant the Mac never reached GitHub, and hid why. The check now names the cause and what to try: offline, an untrusted secure connection (typical of a company network that inspects traffic), a proxy, a name that cannot be looked up, or no answer from the server
+- **Update checks and downloads now use the system proxy and the certificates in the macOS keychain**, like a browser does, which is what a company network usually needs
 - **A new chat shows in the sidebar as soon as you send its first prompt.** Before, it only appeared once the first reply had finished, so you could not switch to another chat and come back while it was working. The blue pulsing dot marks a chat that is still running
 
 ## 1.2.11

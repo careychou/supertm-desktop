@@ -96,6 +96,24 @@ export function gitlabAuthError(status: number, body: string, hasToken: boolean)
   return 'The account behind the saved GitLab token cannot see the release project. Ask to be added to it, then check again.'
 }
 
+/**
+ * Why a request never reached the release server, with what to try. Node reports every such failure as
+ * "fetch failed" and keeps the real reason in `cause`; Chromium's stack reports "net::ERR_…".
+ */
+export function networkError(e: unknown, host: string): string {
+  const chain: string[] = []
+  for (let x: any = e, i = 0; x && i < 5; x = x.cause, i++) chain.push([x.code, x.name, x.message].filter(Boolean).join(' '))
+  const all = chain.join(' | '), detail = chain.filter((c) => !/^(TypeError )?fetch failed$/.test(c)).pop() ?? chain[0] ?? String(e)
+  const why =
+    /ERR_INTERNET_DISCONNECTED|ENETUNREACH|ENETDOWN/i.test(all) ? 'This Mac is offline. Connect to the internet and check again.'
+    : /CERT|SELF_SIGNED|UNABLE_TO_(GET|VERIFY)|certificate|ERR_SSL/i.test(all) ? `The secure connection to ${host} was not trusted. This usually means a company network or security tool is inspecting traffic. Try again on the VPN (or off it), or ask IT whether ${host} is allowed.`
+    : /PROXY|TUNNEL/i.test(all) ? `The network proxy refused the connection to ${host}. Check the proxy settings in System Settings → Network, or ask IT whether ${host} is allowed.`
+    : /ENOTFOUND|EAI_AGAIN|NAME_NOT_RESOLVED/i.test(all) ? `This Mac could not look up ${host}. Check the internet connection and VPN, then check again.`
+    : /Timeout|TIMED_OUT|ETIMEDOUT|ECONNREFUSED|ECONNRESET|CONNECTION_(REFUSED|RESET|CLOSED|FAILED)|EHOSTUNREACH|ADDRESS_UNREACHABLE|socket/i.test(all) ? `${host} did not answer. A firewall or VPN may be blocking it. Check that ${host} opens in a browser on this Mac.`
+    : `Check that ${host} opens in a browser on this Mac, then check again.`
+  return `Could not reach ${host}. ${why} (${detail})`
+}
+
 /** Splits a CHANGELOG ("## 1.3.15" sections) into versions, newest first as written. */
 export function parseChangelog(md: string): Array<{ version: string; notes: string }> {
   const out: Array<{ version: string; notes: string }> = []

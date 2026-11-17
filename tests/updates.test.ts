@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appBundlePath, compareVersions, parseReleases, parseVersion , gitlabAuthError, parseChangelog } from '../src/shared/updates'
+import { appBundlePath, compareVersions, parseReleases, parseVersion , gitlabAuthError, networkError, parseChangelog } from '../src/shared/updates'
 
 describe('update checks', () => {
   it('reads only this product\'s tags and compares numerically', () => {
@@ -37,6 +37,17 @@ describe('release check diagnostics and bundled notes', () => {
     expect(gitlabAuthError(401, '{"message":"401 Unauthorized"}', true)).toMatch(/expired, was revoked/)
     expect(gitlabAuthError(403, '{"error":"insufficient_scope"}', true)).toMatch(/lacks the read_api scope/)
     expect(gitlabAuthError(404, '{"message":"404 Project Not Found"}', true)).toMatch(/cannot see the release project/)
+  })
+
+  it('explains a request that never reached the server instead of saying "fetch failed"', () => {
+    const node = (code: string, message = code) => Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error(message), { code }) })
+    expect(networkError(node('UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'unable to get local issuer certificate'), 'gitlab.com')).toMatch(/^Could not reach gitlab\.com\. The secure connection to gitlab\.com was not trusted.*\(UNABLE_TO_GET_ISSUER_CERT_LOCALLY Error unable to get local issuer certificate\)$/)
+    expect(networkError(node('ENOTFOUND', 'getaddrinfo ENOTFOUND gitlab.com'), 'gitlab.com')).toMatch(/could not look up gitlab\.com/)
+    expect(networkError(node('ECONNREFUSED'), 'gitlab.com')).toMatch(/did not answer/)
+    expect(networkError(new Error('net::ERR_INTERNET_DISCONNECTED'), 'gitlab.com')).toMatch(/offline/)
+    expect(networkError(new Error('net::ERR_TUNNEL_CONNECTION_FAILED'), 'gitlab.com')).toMatch(/proxy refused/)
+    expect(networkError(Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' }), 'gitlab.com')).toMatch(/did not answer/)
+    expect(networkError(new TypeError('fetch failed'), 'gitlab.com')).toMatch(/opens in a browser.*\(TypeError fetch failed\)$/)
   })
 
   it('splits the changelog into versions and drops links that only work in the repository', () => {

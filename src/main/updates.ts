@@ -1,11 +1,11 @@
-import { app, shell, type IpcMain } from 'electron'
+import { app, net, shell, type IpcMain } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import { BRAND } from '../shared/brand'
-import { appBundlePath, compareVersions, gitlabAuthError, parseReleases, type ReleaseInfo, type UpdateCheck, type UpdateSource, type UpdateState } from '../shared/updates'
+import { appBundlePath, compareVersions, gitlabAuthError, networkError, parseReleases, type ReleaseInfo, type UpdateCheck, type UpdateSource, type UpdateState } from '../shared/updates'
 import type { PushEvent } from '../shared/api'
 
 const run = promisify(execFile)
@@ -18,6 +18,19 @@ interface Opts {
 
 const authHeaders = (src: UpdateSource, token?: string): Record<string, string> =>
   src.provider === 'gitlab' ? (token ? { 'PRIVATE-TOKEN': token } : {}) : { Accept: 'application/vnd.github+json' }
+
+/**
+ * Requests go through Chromium's network stack first: unlike Node's fetch it follows the system proxy and trusts the
+ * certificates in the macOS keychain, which a company network that inspects traffic depends on. Node's fetch is the fallback.
+ */
+async function get(url: string, init: { headers?: Record<string, string>; signal?: AbortSignal }): Promise<Response> {
+  try { return await net.fetch(url, init) } catch (e) {
+    if (init.signal?.aborted) throw e
+    try { return await fetch(url, init) } catch { throw e }
+  }
+}
+
+const hostOf = (src: UpdateSource) => (src.provider === 'gitlab' ? new URL(src.host).host : 'github.com')
 
 function listUrl(src: UpdateSource): string {
   return src.provider === 'gitlab'
@@ -52,7 +65,7 @@ export function registerUpdates(ipcMain: IpcMain, o: Opts): { checkInBackground(
     if (!src) return { ...base, error: 'This build has no release source configured.' }
     const token = src.provider === 'gitlab' ? (o.getToken() || process.env.GITLAB_TOKEN || undefined) : undefined
     try {
-      const r = await fetch(listUrl(src), { headers: authHeaders(src, token), signal: AbortSignal.timeout(20_000) })
+      const r = await get(listUrl(src), { headers: authHeaders(src, token), signal: AbortSignal.timeout(20_000) })
       if ((r.status === 401 || r.status === 403 || r.status === 404) && src.provider === 'gitlab')
         return { ...base, needsToken: true, error: gitlabAuthError(r.status, await r.text().catch(() => ''), !!token) }
       if (!r.ok) return { ...base, error: `Release server returned ${r.status} ${r.statusText}` }
@@ -60,7 +73,7 @@ export function registerUpdates(ipcMain: IpcMain, o: Opts): { checkInBackground(
       lastCheck = { ...base, latest: all[0]?.version, newer: all.filter((x) => compareVersions(x.version, current) > 0) }
       return lastCheck
     } catch (e) {
-      return { ...base, error: `Could not reach the release server: ${(e as Error).message}` }
+      return { ...base, error: networkError(e, hostOf(src)) }
     }
   }
 
@@ -73,7 +86,7 @@ export function registerUpdates(ipcMain: IpcMain, o: Opts): { checkInBackground(
     abort = new AbortController()
     try {
       setState({ phase: 'downloading', version, received: 0, total: 0 })
-      const r = await fetch(rel.zipUrl, { headers: src.provider === 'gitlab' ? authHeaders(src, token) : {}, signal: abort.signal })
+      const r = await get(rel.zipUrl, { headers: src.provider === 'gitlab' ? authHeaders(src, token) : {}, signal: abort.signal })
       if (!r.ok || !r.body) throw new Error(`Download failed: ${r.status} ${r.statusText}`)
       const total = Number(r.headers.get('content-length') || 0)
       const zip = path.join(dir, 'update.zip')
@@ -100,7 +113,7 @@ export function registerUpdates(ipcMain: IpcMain, o: Opts): { checkInBackground(
       return { ok: true }
     } catch (e) {
       fs.rmSync(dir, { recursive: true, force: true })
-      const error = abort?.signal.aborted ? 'Download cancelled.' : (e as Error).message
+      const error = abort?.signal.aborted ? 'Download cancelled.' : /fetch failed|net::ERR_/.test((e as Error).message) ? networkError(e, hostOf(src)) : (e as Error).message
       setState({ phase: 'error', version, error })
       return { ok: false, error }
     } finally { abort = null }
