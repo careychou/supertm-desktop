@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { AppInfo, ModelGroup, RegistryInfo, Settings } from '../../../shared/api'
+import type { AppInfo, ExcelStatus, ModelGroup, RegistryInfo, Settings } from '../../../shared/api'
 import { bareModel } from '../../../shared/providers'
 import { BRAND } from '../../../shared/brand'
 import { ProvidersTab } from './ProvidersTab'
@@ -8,7 +8,7 @@ import { UpdatesPanel } from './UpdatesPanel'
 import { useExpand } from '../hooks/useExpand'
 import { useEscape } from '../hooks/useEscape'
 
-type Tab = 'providers' | 'general' | 'compaction' | 'skills' | 'sync' | 'about'
+type Tab = 'providers' | 'general' | 'excel' | 'compaction' | 'skills' | 'sync' | 'about'
 
 export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: string; folders: string[]; onClose(): void; initialTab?: Tab }) {
   const [s, setS] = useState<Settings | null>(null)
@@ -29,7 +29,7 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
     setGroups(r.groups ?? [])
     setHealth(r.error ? `✗ ${r.error}` : `✓ ${r.models.length} models from ${r.groups.filter((g) => !g.error).length} provider(s)`)
   }
-  const tabs: Array<[Tab, string]> = [['providers', 'Model providers'], ['general', 'General'], ['compaction', 'Memory compaction'], ['skills', 'Skills & agents'], ['sync', 'Sync sessions'], ['about', 'About']]
+  const tabs: Array<[Tab, string]> = [['providers', 'Model providers'], ['general', 'General'], ['excel', 'Excel'], ['compaction', 'Memory compaction'], ['skills', 'Skills & agents'], ['sync', 'Sync sessions'], ['about', 'About']]
   const compactKnown = !s.compactModel || groups.some((g) => g.models.includes(s.compactModel))
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -78,6 +78,7 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
             </div>
           </div>
         )}
+        {tab === 'excel' && <ExcelTab s={s} setS={setS} />}
         {tab === 'compaction' && (
           <div className="form">
             <div className="muted small">Compaction folds older turns into a summary so long chats stay fast and cheap. It rewrites the start of the conversation, so the provider's prompt cache (Claude: ~5 min) is rebuilt once on the next call. It pays off when you keep using the chat, so the defaults wait until the cache has gone cold anyway, unless the chat is very large.</div>
@@ -126,6 +127,52 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function ExcelTab({ s, setS }: { s: Settings; setS(s: Settings): void }) {
+  const [st, setSt] = useState<ExcelStatus | null>(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { void window.desk.excel.status(false).then(setSt) }, [])
+  const check = async () => { setBusy(true); try { setSt(await window.desk.excel.status(true)) } finally { setBusy(false) } }
+  const n = st?.workbooks.length ?? 0
+  const [tone, line] = !st ? ['', 'Checking…']
+    : !st.installed ? ['', 'Excel is not installed on this Mac. .xlsx files can still be read and edited on disk.']
+    : !st.running ? ['', 'Excel is installed but not running. Open a workbook in Excel to work on it live.']
+    : st.permission === 'granted' ? ['ok', `Connected to Excel · ${n ? `${n} workbook${n === 1 ? '' : 's'} open` : 'no workbook open'}`]
+    : st.permission === 'needed' ? ['warn', `macOS has not allowed ${BRAND.title} to control Excel. Turn it on in System Settings → Privacy & Security → Automation, then check again.`]
+    : st.error ? ['warn', st.error]
+    : ['', `Excel is running. Check the connection once: macOS will ask whether ${BRAND.title} may control Excel.`]
+  return (
+    <div className="form">
+      <p className="muted small">Lets the agent read and edit Excel workbooks without an Excel add-in. A workbook open in Excel is edited in place while you watch, and Excel recalculates; a closed .xlsx file is edited on disk. Attach one with the 📎 button in the chat box.</p>
+      <label>Work with Excel
+        <select value={s.excelEnabled ? 'on' : 'off'} onChange={(e) => setS({ ...s, excelEnabled: e.target.value === 'on' })}>
+          <option value="on">On — the agent has the Excel tools</option>
+          <option value="off">Off</option>
+        </select>
+      </label>
+      <div className="sub-h">Connection to Excel</div>
+      <div className="xl-status" role="status">
+        <span className={`dot ${tone}`} />
+        <span>{line}</span>
+        <div className="spacer" />
+        <button onClick={() => void check()} disabled={busy || !st?.running}>{busy ? 'Checking…' : st?.permission === 'granted' ? 'Check again' : 'Check Excel connection'}</button>
+      </div>
+      <label>Before changing a workbook
+        <select value={s.excelConfirm} onChange={(e) => setS({ ...s, excelConfirm: e.target.value as Settings['excelConfirm'] })}>
+          <option value="ask">Show the change and ask first (Interactive chats; Autopilot applies without asking)</option>
+          <option value="never">Apply without asking</option>
+        </select>
+      </label>
+      <label>Back up a workbook before the first edit
+        <select value={s.excelBackup ? 'on' : 'off'} onChange={(e) => setS({ ...s, excelBackup: e.target.value === 'on' })}>
+          <option value="on">On — saves name.backup.xlsx next to the file</option>
+          <option value="off">Off</option>
+        </select>
+      </label>
+      <p className="muted small">Reading never asks. For a workbook open in Excel the backup is a copy of the last saved version, and a change made by the agent is not saved until you save it in Excel.</p>
     </div>
   )
 }

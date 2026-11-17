@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import type { PermissionDecision } from '../../../shared/api'
+import { ExcelPermission } from './ExcelViews'
 
 export interface PermissionReq { requestId: string; agentId: string; kind: string; detail: string }
 export interface AskReq { requestId: string; agentId: string; question: string; choices?: string[] }
 
 export function PermissionCard({ req, onDecide }: { req: PermissionReq; onDecide(d: PermissionDecision): void }) {
+  if (req.kind === 'excel') return <ExcelPermission detail={req.detail} agentId={req.agentId} onDecide={onDecide} />
   return (
     <div className="prompt-card">
       <div className="prompt-title">{req.kind === 'shell' ? 'Run this command?' : req.kind === 'url' ? 'Fetch this URL?' : 'Allow this file change?'} {req.agentId !== 'main' && <span className="muted">· {req.agentId}</span>}</div>

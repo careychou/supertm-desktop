@@ -1,6 +1,6 @@
 {
   "name": "supertm-desktop",
-  "version": "1.2.10",
+  "version": "1.2.11",
   "description": "Lightweight Copilot-like desktop agent for custom models",
   "main": "out/main/index.js",
   "type": "commonjs",
@@ -37,13 +37,17 @@
       ],
       "category": "public.app-category.developer-tools",
       "identity": "-",
-      "hardenedRuntime": false
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "NSAppleEventsUsageDescription": "SuperTM Desktop reads and edits the workbooks you have open in Excel when you ask it to."
+      }
     },
     "artifactName": "supertm-desktop-${version}-${arch}.${ext}",
     "publish": null
   },
   "dependencies": {
     "dompurify": "^3.4.17",
+    "exceljs": "^4.4.0",
     "highlight.js": "^11.12.0",
     "js-yaml": "^5.5.0",
     "marked": "^18.2.0",

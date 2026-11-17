@@ -37,6 +37,12 @@ export interface Settings extends AttachLimits {
   pricingPath: string
   /** Daily budget in USD for the usage ring (0 = off). */
   dailyBudget: number
+  /** Excel tools: read and edit workbooks open in Excel, and .xlsx files. */
+  excelEnabled: boolean
+  /** Show a workbook change and wait for the user before writing it (autopilot chats never wait). */
+  excelConfirm: 'ask' | 'never'
+  /** Copy a workbook to name.backup.xlsx before the first edit. */
+  excelBackup: boolean
 }
 
 let dir = ''
@@ -53,7 +59,7 @@ export function loadSettings(): Settings {
   const first: ProviderEntry = v.project
     ? { id: 'default', name: BRAND.vertexProviderName, kind: 'vertex', baseUrl: '', apiKey: '', project: v.project, location: v.location, credentialsPath: '', models: [...v.models], visionModel: v.visionModel, cacheTtl: '5m' }
     : { id: 'default', name: BRAND.defaultProviderName, kind: 'openai', baseUrl: d.baseUrl, apiKey: d.apiKey }
-  const defaults: Settings = { providers: [first], defaultModel: 'anthropic/claude-sonnet-5', defaultCwd: os.homedir(), maxConcurrency: 4, maxTurnsMain: 50, maxTurnsSub: 30, reasoning: 'medium', defaultMode: 'autopilot', autoCompact: 'suggest', compactThreshold: 80000, compactKeepRecent: 2, compactModel: BRAND.defaultCompactModel, compactIdleMinutes: 5, compactHardLimit: 120000, compactMinGain: 20000, ...DEFAULT_LIMITS, requestMaxMB: 20, imageTurns: 4, pricingPath: '', dailyBudget: 0 }
+  const defaults: Settings = { providers: [first], defaultModel: 'anthropic/claude-sonnet-5', defaultCwd: os.homedir(), maxConcurrency: 4, maxTurnsMain: 50, maxTurnsSub: 30, reasoning: 'medium', defaultMode: 'autopilot', autoCompact: 'suggest', compactThreshold: 80000, compactKeepRecent: 2, compactModel: BRAND.defaultCompactModel, compactIdleMinutes: 5, compactHardLimit: 120000, compactMinGain: 20000, ...DEFAULT_LIMITS, requestMaxMB: 20, imageTurns: 4, pricingPath: '', dailyBudget: 0, excelEnabled: true, excelConfirm: 'ask', excelBackup: true }
   try {
     const raw = JSON.parse(fs.readFileSync(file(), 'utf8'))
     const open = (enc?: string): string | undefined => {

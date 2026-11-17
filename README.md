@@ -17,7 +17,7 @@ It reads skills and agents from the same places Copilot does — `<folder>/.gith
 | 1 | [Install the app](#install) |
 | 2 | [Add a working folder](doc/tutorial.md#1-add-a-working-folder) |
 | 3 | [Connect a model: **Google Vertex AI** example](doc/tutorial.md#example-a-google-cloud-vertex-ai) · [**Azure OpenAI** example](doc/tutorial.md#example-b-azure-openai-or-azure-ai-foundry) |
-| 4 | [Chat with the agent](doc/tutorial.md#3-chat-with-the-agent) |
+| 4 | [Chat with the agent](doc/tutorial.md#3-chat-with-the-agent) · [Work with Excel](doc/tutorial.md#work-with-excel) |
 | 5 | [Skills and agents per folder](doc/tutorial.md#4-skills-and-agents-per-folder) |
 | 6 | [Memory compaction](doc/tutorial.md#5-keep-long-chats-small-memory-compaction) · [AI usage and cost](doc/tutorial.md#6-see-what-you-spend-ai-usage) |
 | 7 | [Move chats between Macs, or import from Copilot / Claude Code](doc/tutorial.md#7-move-chats-between-macs-sync-sessions) |

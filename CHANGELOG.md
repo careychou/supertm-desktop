@@ -1,5 +1,20 @@
 # Release notes
 
+## 1.2.11
+
+### Work with Excel, without an add-in
+- SuperTM can now read and edit Excel workbooks directly. A workbook **open in Excel** is edited in place while you watch, and Excel recalculates. A **closed `.xlsx` file** is edited on disk
+- **Attach an open workbook**: click 📎 and pick it under *Use a workbook open in Excel*. The chip shows your current selection, so you can say "these cells". The first time, macOS asks whether SuperTM may control Excel
+- **See the change before it is made**: in Interactive chats a card shows the cells that will be written and any they replace, with **Apply**, **Apply all Excel changes in this chat** and **Skip**. Autopilot chats apply without asking. Reading never asks
+- **Each step is readable**: "Read Sales!A1:F40", "Write 40 cells to Sales!G1:G40". Click a step to see the cells as a grid
+- **Exact highlighting**: for "highlight the stores under 20%", SuperTM tests every cell itself instead of leaving the model to pick the rows
+- **Safety**: a backup (`name.backup.xlsx`) is made before the first edit; a write returns what the cells held before, so SuperTM can put it back; files with charts, pivot tables or macros are only edited while open in Excel, never on disk
+- **Settings → Excel**: turn the feature off, check the connection, choose whether to ask before changes, turn backups off
+- New: [tutorial section](doc/tutorial.md#work-with-excel) and [how it works](doc/excel.md)
+
+### Fixed
+- **Allow all … this session** now also answers requests of the same kind that were already waiting. Before, when the agent made several tool calls at once, the other cards stayed up
+
 ## 1.2.10
 
 ### Claude on Azure AI Foundry

@@ -1,12 +1,26 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Item } from '../state'
 import { Markdown } from '../Markdown'
+import { ExcelResult } from './ExcelViews'
+import { addr, blockRect, parseRef } from '../../../shared/excel'
 
 type ToolItem = Extract<Item, { t: 'tool' }>
 
 const parse = (args: string): Record<string, any> => { try { return JSON.parse(args) ?? {} } catch { return {} } }
 const q = (v: unknown, n = 60) => { const s = String(v ?? '').replace(/\s+/g, ' '); return s.length > n ? s.slice(0, n - 1) + '…' : s }
 const shortUrl = (u: string) => { try { const x = new URL(u); return q(x.host + x.pathname, 70) } catch { return q(u, 70) } }
+
+const base = (p: unknown) => String(p ?? '').split('/').pop() ?? ''
+/** "Sales!A1:F40 in Budget.xlsx" from an excel_* call's arguments. */
+const xlWhere = (a: Record<string, any>, range?: string) => {
+  const r = String(range ?? ''), cell = !r ? '' : r.includes('!') || !a.sheet ? r : `${a.sheet}!${r}`
+  return `${q(cell || (a.sheet ? `sheet ${a.sheet}` : 'the sheet'), 50)}${a.workbook ? ` in ${q(base(a.workbook), 40)}` : ''}`
+}
+
+/** "G2:G40" for a block of rows starting at G2. */
+const xlBlock = (start: string, rows: unknown[]) => {
+  try { const at = parseRef(start); const r = addr(blockRect(at.r1, at.c1, rows.map((x) => (Array.isArray(x) ? x : [x])))); return at.sheet ? `${at.sheet}!${r}` : r } catch { return start }
+}
 
 /** Human description of a tool call, Copilot-style ("Run unit tests", "Edit src/app.ts"). */
 export function toolLabel(name: string, args: string): string {
@@ -28,6 +42,10 @@ export function toolLabel(name: string, args: string): string {
     case 'ask_user': return `Ask: ${q(a.question, 70)}`
     case 'read_agent': return `Read sub-agent ${a.agent_id ?? ''}`
     case 'list_agents': return 'List sub-agents'
+    case 'excel_info': return a.workbook ? `Look at ${q(base(a.workbook), 60)}` : 'See what is open in Excel'
+    case 'excel_read': return `Read ${xlWhere(a, a.range)}`
+    case 'excel_write': { const v = Array.isArray(a.values) ? a.values : []; const n = v.reduce((t: number, r: unknown) => t + (Array.isArray(r) ? r.length : 1), 0); return `Write ${n} cell${n === 1 ? '' : 's'} to ${xlWhere(a, xlBlock(a.start ?? 'A1', v))}` }
+    case 'excel_format': return a.only_if ? `Format ${q(a.whole_row ? `rows of ${a.range}` : a.range, 40)} where ${q(a.only_if, 20)}${a.workbook ? ` in ${q(base(a.workbook), 40)}` : ''}` : `Format ${xlWhere(a, a.range)}`
     default: return name
   }
 }
@@ -41,6 +59,7 @@ function ToolDetail({ it }: { it: ToolItem }) {
     const cmd = it.name === 'shell' ? a.command : `${a.shellId} ← ${JSON.stringify(a.input)}`
     return <pre className="term"><span className="term-cmd">$ {cmd}</span>{it.output !== undefined ? `\n\n${it.output.trim()}` : ''}</pre>
   }
+  if (it.name.startsWith('excel_')) return <ExcelResult name={it.name} args={a} output={it.output} ok={it.ok} />
   if (it.name === 'sql') return <><pre className="term"><span className="term-cmd">{a.query}</span></pre>{it.output !== undefined && <div className="tool-out"><Markdown text={it.output} /></div>}</>
   if (it.name === 'edit_file') return <><pre className="term diff"><span className="del">{String(a.old_str ?? '').split('\n').map((l) => `- ${l}`).join('\n')}</span>{'\n'}<span className="add">{String(a.new_str ?? '').split('\n').map((l) => `+ ${l}`).join('\n')}</span></pre>{it.ok === false && <pre className="term">{it.output}</pre>}</>
   if (it.name === 'write_file') return <><pre className="term">{String(a.content ?? '').slice(0, 20000)}</pre>{it.ok === false && <pre className="term">{it.output}</pre>}</>
@@ -184,9 +203,9 @@ export function ItemList({ items, live, onFork }: { items: Item[]; live: boolean
           case 'user': return (
             <div className="msg user">
               {it.attachments?.length ? <div className="atts">{it.attachments.map((a, k) => (
-                <div key={k} className="att-chip" title={`${a.name}\n${a.info}`}>
-                  {a.thumb ? <img src={a.thumb} alt="" /> : <span className="att-ico">📄</span>}
-                  <span className="att-text"><span className="att-name">{a.name}</span><span className="att-info">{a.info}</span></span>
+                <div key={k} className={`att-chip${a.excel ? ` xl ${a.excel}` : ''}`} title={`${a.name}\n${a.info}`}>
+                  {a.thumb ? <img src={a.thumb} alt="" /> : <span className="att-ico">{a.excel ? 'X' : '📄'}</span>}
+                  <span className="att-text"><span className="att-name">{a.name}{a.excel && <span className={`xl-badge ${a.excel}`}>{a.excel === 'live' ? 'Live' : 'File'}</span>}</span><span className="att-info">{a.info}</span></span>
                 </div>))}</div> : null}
               {it.text && <div className="bubble">{it.text}</div>}
             </div>)

@@ -58,7 +58,8 @@ export type AgentEvent =
   /** Queued prompts discarded because the run was stopped or failed. */
   | { kind: 'queue_cleared'; agentId: string; qids: string[] }
 
-export type PermissionKind = 'shell' | 'write' | 'url'
+/** 'excel': a change to a workbook; its `detail` is a JSON preview of the cells (shared/excel ExcelPreview). */
+export type PermissionKind = 'shell' | 'write' | 'url' | 'excel'
 export type PermissionDecision = 'allow' | 'allow_session' | 'deny'
 
 export interface Hooks {

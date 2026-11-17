@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { hasMemory, type Memory } from '../../../shared/memory'
-import type { AttachInput, ModelGroup, PreparedAttachment } from '../../../shared/api'
+import type { AttachInput, ExcelStatus, ModelGroup, PreparedAttachment } from '../../../shared/api'
+import { BRAND } from '../../../shared/brand'
+import { useEscape } from '../hooks/useEscape'
 import { bareModel, isTtsId, TTS_VOICES } from '../../../shared/providers'
 
 type Chip = PreparedAttachment & { pending?: boolean }
@@ -85,6 +87,29 @@ export function Composer(p: Props) {
   }
   const pick = async () => { const r = await window.desk.pickAttachments(); if (r.length) setAtts((a) => [...a, ...r]) }
 
+  // Excel: the paperclip opens a menu that also lists the workbooks open in Excel
+  const [xl, setXl] = useState<ExcelStatus | null>(null)
+  const [xlMenu, setXlMenu] = useState(false)
+  const [xlLoading, setXlLoading] = useState(false)
+  useEffect(() => { void window.desk.excel.status(false).then(setXl).catch(() => setXl(null)) }, [])
+  useEscape(() => setXlMenu(false), xlMenu)
+  const openClip = async () => {
+    const st = await window.desk.excel.status(false).catch(() => null)
+    setXl(st)
+    if (!st?.enabled || !st.installed) return pick()
+    setXlMenu(true)
+    if (!st.running) return
+    setXlLoading(true)
+    setXl(await window.desk.excel.status(true).catch(() => st))
+    setXlLoading(false)
+  }
+  const useWorkbook = async (name: string) => {
+    setXlMenu(false)
+    const r = await window.desk.excel.attach(name)
+    setAtts((a) => [...a.filter((x) => !(x.meta.excel === 'live' && x.meta.name === name)), r])
+    ta.current?.focus()
+  }
+
   // files can be dropped anywhere in the window, not just on the box
   useEffect(() => {
     const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files')
@@ -95,22 +120,52 @@ export function Composer(p: Props) {
     return () => { window.removeEventListener('dragover', over); window.removeEventListener('dragleave', leave); window.removeEventListener('drop', drop) }
   })
 
-  const submit = () => {
-    if ((!text.trim() && !ready.length) || preparing) return
-    p.onSend(text.trim(), ready)
-    setText(''); setAtts([])
+  const sending = useRef(false)
+  const submit = async () => {
+    if ((!text.trim() && !ready.length) || preparing || sending.current) return
+    sending.current = true
+    try {
+      // a live workbook chip follows the selection: look it up again at the moment of sending
+      const fresh = await Promise.all(ready.map(async (a) => {
+        if (a.meta.excel !== 'live') return a
+        const r = await window.desk.excel.attach(a.meta.name).catch(() => null)
+        return r?.att ? r : a
+      }))
+      p.onSend(text.trim(), fresh)
+      setText(''); setAtts([])
+    } finally { sending.current = false }
   }
 
   return (
     <div className="composer-wrap">
+      {xlMenu && (
+        <>
+          <div className="menu-back" onClick={() => setXlMenu(false)} />
+          <div className="xl-menu" role="menu">
+            <button onClick={() => { setXlMenu(false); void pick() }}>📎 Attach files…</button>
+            <div className="menu-sep" />
+            <div className="xl-menu-h"><span className="xl-dot">X</span> Use a workbook open in Excel</div>
+            {!xl?.running ? <div className="xl-menu-note">Excel isn't running. Open a workbook in Excel, then come back here.</div>
+              : xlLoading ? <div className="xl-menu-note">Asking Excel…</div>
+              : xl.permission === 'needed' ? <div className="xl-menu-note">macOS hasn't allowed {BRAND.title} to control Excel yet. Turn it on in System Settings → Privacy &amp; Security → Automation, then try again.</div>
+              : xl.error ? <div className="xl-menu-note">{xl.error}</div>
+              : !xl.workbooks.length ? <div className="xl-menu-note">No workbook is open in Excel.</div>
+              : xl.workbooks.map((w) => (
+                <button key={w.name} className="xl-wb" onClick={() => void useWorkbook(w.name)} title={w.path || 'Not saved yet'}>
+                  <span className="xl-wb-name">{w.name}</span>
+                  <span className="muted">{w.activeSheet ? `${w.activeSheet}${w.selection ? ` · ${w.selection} selected` : ''}` : `${w.sheets.length} sheet${w.sheets.length === 1 ? '' : 's'}`}</span>
+                </button>))}
+          </div>
+        </>
+      )}
       {dragging && <div className="drop-hint">Drop files to attach: images, PDF, Office, text or code</div>}
       <div className={`composer${dragging ? ' dragging' : ''}`}>
         {atts.length > 0 && (
           <div className="att-row">
             {atts.map((a) => (
-              <div key={a.id} className={`att-chip${a.error ? ' err' : ''}${a.pending ? ' pending' : ''}`} title={a.error ?? `${a.meta.name}\n${a.meta.info}`}>
-                {a.meta.thumb ? <img src={a.meta.thumb} alt="" /> : <span className="att-ico">{a.pending ? '⋯' : a.error ? '⚠' : '📄'}</span>}
-                <span className="att-text"><span className="att-name">{a.meta.name}</span><span className="att-info">{a.error ?? a.meta.info}</span></span>
+              <div key={a.id} className={`att-chip${a.error ? ' err' : ''}${a.pending ? ' pending' : ''}${a.meta.excel ? ` xl ${a.meta.excel}` : ''}`} title={a.error ?? `${a.meta.name}\n${a.meta.info}${a.meta.excel === 'live' ? `\nOpen in Excel: ${BRAND.title} reads and edits it in place.` : a.meta.excel === 'file' ? `\nA file on disk: ${BRAND.title} can read more of it or edit it.` : ''}`}>
+                {a.meta.thumb ? <img src={a.meta.thumb} alt="" /> : <span className="att-ico">{a.pending ? '⋯' : a.error ? '⚠' : a.meta.excel ? 'X' : '📄'}</span>}
+                <span className="att-text"><span className="att-name">{a.meta.name}{a.meta.excel && !a.error && <span className={`xl-badge ${a.meta.excel}`}>{a.meta.excel === 'live' ? 'Live' : 'File'}</span>}</span><span className="att-info">{a.error ?? a.meta.info}{a.meta.excel === 'live' && !a.error ? ' · follows your selection' : ''}</span></span>
                 {!a.pending && <button onClick={() => setAtts(atts.filter((x) => x !== a))} title="Remove">×</button>}
               </div>
             ))}
@@ -128,7 +183,7 @@ export function Composer(p: Props) {
             if (!f.length || (e.clipboardData.getData('text/plain').trim() && !f.some((x) => window.desk.pathForFile(x)))) return
             e.preventDefault(); void addFiles(f)
           }}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit() } }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void submit() } }}
         />
         {tts && (
           <div className="tts-hint" title={`Voices: ${TTS_VOICES.join(', ')}`}>
@@ -142,7 +197,7 @@ export function Composer(p: Props) {
           </div>
         )}
         <div className="composer-bar">
-          <button className="clip" onClick={pick} title="Attach files (or paste / drop them). Images are downscaled and documents trimmed to save tokens.">📎</button>
+          <button className="clip" onClick={() => void openClip()} title={`Attach files (or paste / drop them). Images are downscaled and documents trimmed to save tokens.${xl?.enabled && xl.installed ? ' Also lists the workbooks open in Excel.' : ''}`}>📎</button>
           <select className="model-pick" value={p.model} onChange={(e) => p.onModel(e.target.value)} title={p.model}>
             {!p.models.includes(p.model) && <option value={p.model}>{short(p.model)}</option>}
             {(p.groups?.length ?? 0) > 1
@@ -152,7 +207,7 @@ export function Composer(p: Props) {
           <div className="spacer" />
           {p.busy && <button className="send stop" onClick={p.onStop} title="Stop (queued prompts go back in the box)">■</button>}
           {(!p.busy || text.trim() || ready.length > 0) && (
-            <button className="send" onClick={submit} disabled={(!text.trim() && !ready.length) || preparing}
+            <button className="send" onClick={() => void submit()} disabled={(!text.trim() && !ready.length) || preparing}
               title={preparing ? 'Preparing attachments…' : p.busy ? 'Queue: joins the conversation at the next step' : 'Send'}>↑</button>
           )}
         </div>

@@ -8,6 +8,7 @@ import type { Settings } from '../main/settings'
 import type { ModelGroup, ProviderEntry } from './providers'
 import type { Attachment } from '../engine/content'
 import type { AttachMeta } from './attach'
+import type { ExcelStatus } from './excel'
 import type { FolderConfig, MarketPlugin, PluginResult, PluginsStatus, PluginUpdates } from './plugins'
 
 export type { Attachment, AttachMeta }
@@ -119,6 +120,15 @@ export interface DeskApi {
   onPush(cb: (e: PushEvent) => void): () => void
   /** Marketplace plugins installed into a working folder's .github/. */
   plugins: PluginsApi
+  excel: ExcelApi
+}
+
+export type { ExcelStatus }
+export interface ExcelApi {
+  /** Is Excel installed / running, and which workbooks are open. `probe` talks to Excel, which makes macOS ask for permission the first time. */
+  status(probe?: boolean): Promise<ExcelStatus>
+  /** A composer chip for a workbook open in Excel (sheets and current selection, not the data). */
+  attach(name: string): Promise<PreparedAttachment>
 }
 
 export interface PluginsApi {

@@ -358,7 +358,7 @@ export function App() {
               <div className="thread">
                 <ItemList items={items} live={busy} onFork={fork} />
                 {busy && perms.length === 0 && asks.length === 0 && <div className="working"><span className="spinner" /> Working…</div>}
-                {perms.map((r) => <PermissionCard key={r.requestId} req={r} onDecide={(d) => { void window.desk.respondPermission(r.requestId, d); setPerms((x) => x.filter((y) => y.requestId !== r.requestId)) }} />)}
+                {perms.map((r) => <PermissionCard key={r.requestId} req={r} onDecide={(d) => { void window.desk.respondPermission(r.requestId, d); setPerms((x) => x.filter((y) => y.requestId !== r.requestId && !(d === 'allow_session' && y.kind === r.kind))) }} />)}
                 {asks.map((r) => <AskCard key={r.requestId} req={r} onAnswer={(a) => { void window.desk.respondAsk(r.requestId, a); setAsks((x) => x.filter((y) => y.requestId !== r.requestId)); setItems((p) => [...p, { t: 'answer', text: a }]) }} />)}
               </div>
             </div>

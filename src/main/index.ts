@@ -25,6 +25,7 @@ import { externalDefaults, importExternal, scanClaude, scanCopilot, copilotRoot 
 import { azureLogin, azureUsageProvider, cancelAzureLogin, getAzureUsage, getLocalUsage, getProjectUsage, loadPricing, usageProvider } from './usage'
 import { registerPlugins } from './plugins'
 import { registerUpdates } from './updates'
+import { registerExcel } from './excel'
 import { autoCompactDecision, estimateTokens, keepLastPlan, splitHistoryTurns, type CompactPlan } from '../engine/compact'
 
 // GUI apps launched from Finder get a minimal PATH; give shell tools a usable one.
@@ -37,7 +38,9 @@ const live = new Map<string, Session>()
 // Folder plugins (marketplace skills + agents in <folder>/.github/)
 let plugins: ReturnType<typeof registerPlugins> | null = null
 // open permission/ask prompts; Stop resolves a session's prompts with `cancel` so the run can unwind
-const pending = new Map<string, { sid: string; kind: 'permission' | 'ask'; resolve: (v: any) => void; cancel: unknown }>()
+// Excel tools: workbooks open in Excel (live) and .xlsx files
+let excel: ReturnType<typeof registerExcel> | null = null
+const pending = new Map<string, { sid: string; kind: 'permission' | 'ask'; resolve: (v: any) => void; cancel: unknown; perm?: string }>()
 
 const push = (e: PushEvent) => win?.webContents.send('push', e)
 const listing = () => ({ sessions: store.listSessions(), folders: store.listFolders(), bookmarks: store.listBookmarks() })
@@ -56,7 +59,7 @@ let currentRouter: ProviderRouter | null = null
 const adapter = () => ({ stream: (req: any, signal: AbortSignal) => (currentRouter ??= router()).stream(req, signal) })
 /** Last main/sub-agent model call per chat: the provider's prompt cache is warm for a few minutes after it. */
 const lastCall = new Map<string, number>()
-const prepare = (inputs: AttachInput[]) => Promise.all(inputs.map((i) => prepareAttachment(i, settings)))
+const prepare = (inputs: AttachInput[]) => Promise.all(inputs.map(async (i) => { const p = await prepareAttachment(i, settings); return excel ? excel.svc.decorate(p, i.path) : p }))
 
 function getLive(id: string): Session {
   let s = live.get(id)
@@ -67,7 +70,7 @@ function getLive(id: string): Session {
     adapter: adapter(), cwd: row.cwd, model: row.model, history: store.loadMessages(id),
     maxConcurrency: settings.maxConcurrency, maxTurnsMain: settings.maxTurnsMain, maxTurnsSub: settings.maxTurnsSub, reasoning: effortOf(row), memory: parseMemory(row.memories), folderMemory: folderMemoryOf(row.cwd),
     autoApprove: modeOf(row) === 'autopilot', stateDir: stateDirOf(id), compactModel: () => settings.compactModel,
-    extraTools: plugins?.tools,
+    extraTools: [...(plugins?.tools ?? []), ...(excel?.tools() ?? [])], extraPrompt: excel?.prompt() || undefined,
     hooks: {
       onEvent: (event) => {
         if (event.kind === 'usage') {
@@ -79,7 +82,7 @@ function getLive(id: string): Session {
       },
       requestPermission: (r) => new Promise<PermissionDecision>((resolve) => {
         const requestId = randomUUID()
-        pending.set(requestId, { sid: id, kind: 'permission', resolve, cancel: 'deny' })
+        pending.set(requestId, { sid: id, kind: 'permission', resolve, cancel: 'deny', perm: r.kind })
         push({ type: 'permission', sessionId: id, requestId, ...r })
       }),
       askUser: (r) => new Promise<string>((resolve) => {
@@ -271,7 +274,12 @@ function registerIpc() {
   ipcMain.handle('copyText', (_e, t: string) => clipboard.writeText(t))
   ipcMain.handle('revealFile', (_e, p: string) => eshell.showItemInFolder(p))
   ipcMain.handle('loadItems', (_e, id: string) => store.loadUiItems(id))
-  ipcMain.handle('respondPermission', (_e, rid: string, d: PermissionDecision) => { pending.get(rid)?.resolve(d); pending.delete(rid) })
+  ipcMain.handle('respondPermission', (_e, rid: string, d: PermissionDecision) => {
+    const p = pending.get(rid)
+    p?.resolve(d); pending.delete(rid)
+    // "allow all this session" also answers the requests of the same kind that were already waiting (parallel tool calls)
+    if (p && d === 'allow_session') for (const [id, q] of pending) if (q.sid === p.sid && q.kind === 'permission' && q.perm === p.perm) { pending.delete(id); q.resolve('allow') }
+  })
   ipcMain.handle('respondAsk', (_e, rid: string, a: string) => { pending.get(rid)?.resolve(a); pending.delete(rid) })
   ipcMain.handle('listModels', async () => {
     const groups = await (currentRouter ??= router()).listGroups()
@@ -396,6 +404,7 @@ app.whenReady().then(() => {
   store = new Store(dataHome)
   registerIpc()
   plugins = registerPlugins(ipcMain, { dataHome, push, folders: () => store.listFolders().map((f) => f.path) })
+  excel = registerExcel(ipcMain, () => ({ enabled: settings.excelEnabled, confirm: settings.excelConfirm, backup: settings.excelBackup }))
   registerUpdates(ipcMain, { push, getToken: () => undefined }).checkInBackground()
   createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })

@@ -521,3 +521,40 @@ button.danger { color: var(--fail); }
 .release-notes { font-size: 13px; padding: 4px 0 2px 14px; }
 .modal.settings { width: min(900px, 94vw); }
 .modal.settings .tabs button { white-space: nowrap; }
+
+/* Excel: workbook chips, the paperclip menu, cell grids in tool rows and the approval card */
+.att-chip.xl { border-color: #b7dcc6; background: #e8f5ee; }
+.att-chip.xl .att-ico { background: #107c41; color: #fff; font-size: 15px; font-weight: 700; }
+.msg.user .atts .att-chip.xl { background: #e8f5ee; }
+.xl-badge { display: inline-block; margin-left: 6px; font-size: 10.5px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; padding: 0 7px; border-radius: 999px; vertical-align: 1px; }
+.xl-badge.live { background: #107c41; color: #fff; }
+.xl-badge.file { background: #eef1f4; color: #3b434b; border: 1px solid var(--line); }
+.xl-dot { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 3px; background: #107c41; color: #fff; font-size: 10px; font-weight: 700; vertical-align: -2px; }
+.xl-menu { position: absolute; left: 8px; bottom: 100%; margin-bottom: 6px; z-index: 21; width: 340px; max-width: calc(100% - 16px); background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.16); padding: 5px; }
+.xl-menu button { display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; padding: 6px 10px; border-radius: 6px; font-size: 13.5px; }
+.xl-menu button:hover { background: var(--hover); }
+.xl-menu-h { padding: 5px 10px 3px; font-size: 12px; color: var(--muted); }
+.xl-menu-note { padding: 4px 10px 8px; font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.xl-menu .xl-wb { padding-left: 32px; }
+.xl-wb-name { flex: none; max-width: 60%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.xl-menu .xl-wb .muted { flex: 1; min-width: 0; text-align: right; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.xl-grid-wrap { max-width: 100%; overflow-x: auto; margin-bottom: 6px; }
+.xl-grid { border-collapse: collapse; font-family: "SF Mono", Menlo, monospace; font-size: 12px; background: #fff; }
+.xl-grid th { background: #f0f2f5; color: var(--muted); font-weight: 500; border: 1px solid var(--line); padding: 2px 8px; text-align: center; min-width: 30px; }
+.xl-grid td { border: 1px solid var(--line); padding: 3px 9px; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; color: #24292f; }
+.xl-grid td.n { text-align: right; }
+.xl-grid td.add { background: #dafbe1; color: #116329; }
+.xl-grid td.del { background: #ffebe9; color: #cf222e; }
+.xl-grid-foot { font-size: 12px; color: var(--muted); margin: 4px 0 6px; }
+.xl-summary { font-size: 12.5px; color: #3b434b; margin-bottom: 6px; white-space: pre-wrap; }
+.xl-part .label { margin-bottom: 3px; }
+.prompt-card.xl-approve { border-color: #d0d7de; border-left: 3px solid #107c41; background: #fff; }
+.xl-approve .prompt-title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.xl-approve-sum { margin: 0 0 10px; font-size: 13px; color: #3b434b; }
+.xl-approve-cols { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 8px; }
+.xl-approve-cols .label { margin-bottom: 3px; }
+.xl-approve .prompt-actions button.primary { background: #107c41 !important; border-color: #107c41 !important; color: #fff; }
+.xl-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; margin: 2px 0 12px; }
+.xl-status .dot { width: 8px; height: 8px; border-radius: 50%; background: #8c959f; flex: none; }
+.xl-status .dot.ok { background: var(--ok); }
+.xl-status .dot.warn { background: #bf8700; }

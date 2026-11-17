@@ -4,7 +4,7 @@ A short tour of SuperTM Desktop, from first launch to moving chats between Macs.
 
 1. [Add a working folder](#1-add-a-working-folder)
 2. [Connect a model provider](#2-connect-a-model-provider): [Vertex AI example](#example-a-google-cloud-vertex-ai), [Azure OpenAI example](#example-b-azure-openai-or-azure-ai-foundry)
-3. [Chat with the agent](#3-chat-with-the-agent)
+3. [Chat with the agent](#3-chat-with-the-agent), including [working with Excel](#work-with-excel)
 4. [Skills and agents per folder](#4-skills-and-agents-per-folder)
 5. [Keep long chats small: memory compaction](#5-keep-long-chats-small-memory-compaction)
 6. [See what you spend: AI usage](#6-see-what-you-spend-ai-usage)
@@ -139,7 +139,7 @@ Type in the box at the bottom and press **Enter** (**Shift+Enter** adds a new li
 | Control | What it does |
 |---|---|
 | **Model** (e.g. `claude-sonnet-5`) | Pick the model for this chat |
-| **📎** / paste / drop | Attach files and screenshots. Images get downscaled and documents trimmed to save tokens. |
+| **📎** / paste / drop | Attach files and screenshots. Images get downscaled and documents trimmed to save tokens. Also lists the workbooks open in Excel (see [Work with Excel](#work-with-excel)). |
 | **Folder** (e.g. `demo-app`) | The working folder the agent runs in |
 | **✋ Interactive / 🚀 Autopilot** | Interactive asks before running tools that change things. Autopilot runs them without asking. |
 | **💭 Effort** | How much the model thinks before it answers (off, low, medium, high) |
@@ -166,6 +166,55 @@ Right-click a working folder in the sidebar (or use its **⋯** button) and choo
 
 - **Folder memory** is for the whole project. **Session memory** (＋ Memory) is for one chat. When both say different things, session memory wins.
 - Folder memory is exported and imported with your chats. An import never overwrites folder memory you already have.
+
+### Work with Excel
+
+SuperTM can read and edit Excel workbooks directly, with no Excel add-in. A workbook that is **open in Excel** is edited in place: you watch the cells change and Excel recalculates. A **closed `.xlsx` file** is edited on disk. The screenshots below use a demo workbook, `Budget FY27.xlsx`, with 39 stores on a `Sales` sheet.
+
+**1. Open the workbook in Excel and select the cells you care about.** Selecting is optional; it lets you say "these cells" in your prompt.
+
+**2. In SuperTM, click 📎 and pick the workbook** under *Use a workbook open in Excel*.
+
+![The paperclip menu listing the workbook open in Excel](images/tutorial/09a-excel-menu.png)
+
+The first time, macOS asks whether SuperTM may control Microsoft Excel. Click **Allow**. If the menu says the permission is missing, turn it on in **System Settings → Privacy & Security → Automation**.
+
+**3. Ask for what you want.** The green chip shows the workbook, a **Live** badge, and your current selection. SuperTM looks the selection up again when you press Enter, so you can change it in Excel after attaching.
+
+![The workbook chip in the chat box, with a prompt](images/tutorial/09b-excel-chip.png)
+
+**4. Check the change and apply it.** In an **✋ Interactive** chat, SuperTM shows what it is about to write before it touches the workbook, including any cells it would replace.
+
+![Approval card showing the cells that will be written](images/tutorial/09c-excel-approve.png)
+
+| Button | What it does |
+|---|---|
+| **Apply** | Makes this one change |
+| **Apply all Excel changes in this chat** | Makes this change and stops asking for the rest of the chat |
+| **Skip** | Leaves the workbook untouched and tells the agent you declined |
+
+Reading cells never asks. In a **🚀 Autopilot** chat, changes are applied without asking.
+
+**5. See what happened.** Each step shows as a plain line, such as "Write 40 cells to Sales!G1:G40". Click a line to see the cells.
+
+![Tool rows for the Excel steps, with one opened to show the cells written](images/tutorial/09d-excel-result.png)
+
+![The agent's answer listing what it changed](images/tutorial/09e-excel-answer.png)
+
+Things to know:
+
+- **Nothing is saved for you.** A change to an open workbook stays unsaved until you save it in Excel.
+- **A backup is made first.** Before its first edit, SuperTM copies the file to `name.backup.xlsx` next to it. For an open workbook this is the last saved version.
+- **To undo**, ask SuperTM to "put it back": it keeps what the cells held before. Whether ⌘Z in Excel reverses these edits has not been tested, so don't rely on it.
+- **Closed files work too.** Attach or drop an `.xlsx` (it gets a **File** badge), or just name it in your prompt. Formulas written to a closed file show their values once you open it in Excel.
+- **Files with charts, pivot tables or macros** can only be edited while open in Excel. SuperTM refuses to edit them on disk, because that would drop those parts.
+- **Highlighting is a plain fill.** "Highlight the stores under 20%" colours the cells that match now; it does not update when the numbers change.
+
+The options are in **Settings → Excel**: turn the feature off, check the connection to Excel, choose whether to ask before changes, and turn backups off.
+
+![Settings → Excel](images/tutorial/09f-excel-settings.png)
+
+For how this works inside, see [Excel: how it works](excel.md).
 
 ## 4. Skills and agents per folder
 
