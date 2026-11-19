@@ -119,7 +119,7 @@ export class ExcelService {
 
   queued<T>(fn: () => Promise<T>): Promise<T> { return this.serial(fn) }
 
-  private check() { if (!this.cfg().enabled) throw new Error('Working with Excel is turned off in Settings → Excel.') }
+  private check() { if (!this.cfg().enabled) throw new Error('Working with Excel is turned off in Settings → MS Office.') }
 
   private backup(file: string | undefined): string {
     if (!this.cfg().backup || !file || !path.isAbsolute(file) || this.backedUp.has(file) || !fs.existsSync(file)) return ''

@@ -1,5 +1,15 @@
 # Release notes
 
+## 1.2.17
+
+### One MS Office tab in Settings
+- **Settings → MS Office** replaces the separate **Excel** and **Word & PowerPoint** tabs
+- **Connect to Office** connects to Excel, Word and PowerPoint in one press, for whichever of them are open. Each app shows its own status line
+- One choice turns Office on or off: all three, Excel only, Word and PowerPoint only, or off
+- Ask-first and backup are now one setting each for all three apps. If you had them set differently for Excel and for Word and PowerPoint, the tab shows the safer one (ask first, backup on) and applies it to all three the next time you change it
+- Tracked changes stays a Word-only setting
+- macOS still asks once per app the first time, since it grants control app by app
+
 ## 1.2.16
 
 ### Attach an open Word document or PowerPoint presentation

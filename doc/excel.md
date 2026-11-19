@@ -20,7 +20,7 @@ SuperTM Desktop reads and edits Excel workbooks without an Excel add-in. This pa
 | Shared helpers | `src/shared/excel.ts` | A1 range maths, the grid text format, the workbook note. Pure code, used by the main process, the renderer and the tests |
 | Wiring | `src/main/excel/index.ts` | Registers the tools and two IPC calls (`excel:status`, `excel:attach`) |
 | Chat UI | `src/renderer/src/components/ExcelViews.tsx` | Draws cell grids in tool rows and the approval card |
-| Composer and Settings | `Composer.tsx`, `SettingsModal.tsx` | The paperclip menu, the workbook chip, and Settings → Excel |
+| Composer and Settings | `Composer.tsx`, `SettingsModal.tsx` | The paperclip menu, the workbook chip, and Settings → MS Office (shared with Word and PowerPoint) |
 
 Everything Excel-specific runs in the Electron **main process**. The renderer only displays results and asks for status.
 
@@ -190,7 +190,7 @@ So `"Budget FY27.xlsx"` means the open workbook when it is open, and the file in
 
 | Mechanism | Detail |
 |---|---|
-| Approval | A write or format in an Interactive chat raises a permission request of kind `excel`. Its detail is JSON (`ExcelPreview`): the range, a summary, and before / after grids. The renderer draws it as a card. "Apply all Excel changes in this chat" remembers the answer for the session and also answers any Excel requests already waiting (the model can issue several tool calls at once). Autopilot, or Settings → Excel → "Apply without asking", skips it |
+| Approval | A write or format in an Interactive chat raises a permission request of kind `excel`. Its detail is JSON (`ExcelPreview`): the range, a summary, and before / after grids. The renderer draws it as a card. "Apply all Excel changes in this chat" remembers the answer for the session and also answers any Excel requests already waiting (the model can issue several tool calls at once). Autopilot, or Settings → MS Office → "Apply without asking", skips it |
 | Reads never ask | Only `excel_write` and `excel_format` are gated |
 | Backup | Before the first edit of a workbook in an app run, the file is copied to `name.backup.xlsx` beside it. For a live workbook this is the last *saved* version. Skipped for workbooks that were never saved or live on OneDrive/SharePoint URLs |
 | Old contents returned | A write result includes what the cells held before, so "undo that" is one more tool call |
@@ -214,6 +214,8 @@ Stored in `settings.json` alongside the other settings:
 | `excelEnabled` | `true` | When off, the tools and the prompt paragraph are not sent to the model at all |
 | `excelConfirm` | `ask` | `ask` shows the approval card; `never` applies without asking |
 | `excelBackup` | `true` | Make `name.backup.xlsx` before the first edit |
+
+Settings → MS Office is one tab for Excel, Word and PowerPoint. Its on/off choice sets `excelEnabled` and `officeEnabled`; its ask-first and backup choices write the Excel key and the matching Word and PowerPoint key together. **Connect to Office** asks both services for their status in one press.
 
 Idle chats are rebuilt when Settings are saved, so a change takes effect on the next message.
 

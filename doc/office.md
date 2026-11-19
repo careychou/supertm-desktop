@@ -18,7 +18,7 @@ SuperTM Desktop reads and edits Word documents and PowerPoint presentations with
 | Shared helpers | `src/shared/office.ts` | Types, the text the model reads, span and colour parsing |
 | Wiring | `src/main/office/index.ts` | Registers the tools and two IPC calls (`office:status`, `office:attach`) |
 | Chat UI | `src/renderer/src/components/OfficeViews.tsx` | The approval card and the before/after view in tool rows |
-| Composer and Settings | `Composer.tsx`, `SettingsModal.tsx` | The paperclip menu, the document chip, and Settings → Word & PowerPoint |
+| Composer and Settings | `Composer.tsx`, `SettingsModal.tsx` | The paperclip menu, the document chip, and Settings → MS Office (shared with Excel) |
 
 ## Attaching an open document
 
@@ -58,7 +58,7 @@ Positions inside a Word document always come from Word itself, never from arithm
 
 ## Tracked changes
 
-Word edits can be made as tracked changes, so they arrive as suggestions the user accepts or rejects. Settings → Word & PowerPoint sets the default; a call's own `track` argument wins. The script turns tracking on for the one edit and restores the user's setting afterwards. PowerPoint has no equivalent.
+Word edits can be made as tracked changes, so they arrive as suggestions the user accepts or rejects. Settings → MS Office sets the default; a call's own `track` argument wins. The script turns tracking on for the one edit and restores the user's setting afterwards. PowerPoint has no equivalent.
 
 ## Safety around changes
 

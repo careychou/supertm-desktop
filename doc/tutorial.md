@@ -210,9 +210,9 @@ Things to know:
 - **Files with charts, pivot tables or macros** can only be edited while open in Excel. SuperTM refuses to edit them on disk, because that would drop those parts.
 - **Highlighting is a plain fill.** "Highlight the stores under 20%" colours the cells that match now; it does not update when the numbers change.
 
-The options are in **Settings → Excel**: turn the feature off, check the connection to Excel, choose whether to ask before changes, and turn backups off.
+The options are in **Settings → MS Office**, one tab for Excel, Word and PowerPoint: choose which apps the agent may use, connect to all of them with one button, choose whether to ask before changes, and turn backups off.
 
-![Settings → Excel](images/tutorial/09f-excel-settings.png)
+![Settings → MS Office](images/tutorial/09f-office-settings.png)
 
 For how this works inside, see [Excel: how it works](excel.md).
 
@@ -230,10 +230,10 @@ SuperTM can also read and edit Word documents and PowerPoint presentations direc
 
 Good to know:
 
-- **Tracked changes.** Settings → Word & PowerPoint can make Word edits arrive as tracked changes you accept or reject.
+- **Tracked changes.** Settings → MS Office can make Word edits arrive as tracked changes you accept or reject.
 - **Backup.** Before the first edit of a saved file, a copy of the last saved version is written next to it (`name.backup.docx` / `.pptx`).
 - **You can keep typing.** If you change the same paragraph while the agent is working, it notices, makes no change, and reads again.
-- **First use.** macOS asks once whether the app may control Word and PowerPoint. Check the connection in Settings → Word & PowerPoint.
+- **First use.** macOS asks once whether the app may control Word and PowerPoint. **Connect to Office** in Settings → MS Office connects to every Office app that is open, in one go.
 - **Not supported:** pictures, charts, headers and footers, and reordering slides.
 
 How it works inside: [office.md](office.md).

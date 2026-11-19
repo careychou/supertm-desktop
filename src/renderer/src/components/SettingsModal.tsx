@@ -8,7 +8,7 @@ import { SyncTab } from './SyncTab'
 import { UpdatesPanel } from './UpdatesPanel'
 import { Dialog } from './Dialog'
 
-type Tab = 'providers' | 'general' | 'excel' | 'office' | 'compaction' | 'skills' | 'sync' | 'about'
+type Tab = 'providers' | 'general' | 'office' | 'compaction' | 'skills' | 'sync' | 'about'
 
 export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: string; folders: string[]; onClose(): void; initialTab?: Tab }) {
   const [s, setS] = useState<Settings | null>(null)
@@ -27,7 +27,7 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
     setGroups(r.groups ?? [])
     setHealth(r.error ? `✗ ${r.error}` : `✓ ${r.models.length} models from ${r.groups.filter((g) => !g.error).length} provider(s)`)
   }
-  const tabs: Array<[Tab, string]> = [['providers', 'Model providers'], ['general', 'General'], ['excel', 'Excel'], ['office', 'Word & PowerPoint'], ['compaction', 'Memory compaction'], ['skills', 'Skills & agents'], ['sync', 'Sync sessions'], ['about', 'About']]
+  const tabs: Array<[Tab, string]> = [['providers', 'Model providers'], ['general', 'General'], ['office', 'MS Office'], ['compaction', 'Memory compaction'], ['skills', 'Skills & agents'], ['sync', 'Sync sessions'], ['about', 'About']]
   const compactKnown = !s.compactModel || groups.some((g) => g.models.includes(s.compactModel))
   return (
     <Dialog id="settings" className="settings" onClose={onClose} head={
@@ -73,7 +73,6 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
             </div>
           </div>
         )}
-        {tab === 'excel' && <ExcelTab s={s} setS={setS} />}
         {tab === 'office' && <OfficeTab s={s} setS={setS} />}
         {tab === 'compaction' && (
           <div className="form">
@@ -131,86 +130,68 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
   )
 }
 
-function ExcelTab({ s, setS }: { s: Settings; setS(s: Settings): void }) {
-  const [st, setSt] = useState<ExcelStatus | null>(null)
-  const [busy, setBusy] = useState(false)
-  useEffect(() => { void window.desk.excel.status(false).then(setSt) }, [])
-  const check = async () => { setBusy(true); try { setSt(await window.desk.excel.status(true)) } finally { setBusy(false) } }
-  const n = st?.workbooks.length ?? 0
-  const [tone, line] = !st ? ['', 'Checking…']
-    : !st.installed ? ['', 'Excel is not installed on this Mac. .xlsx files can still be read and edited on disk.']
-    : !st.running ? ['', 'Excel is installed but not running. Open a workbook in Excel to work on it live.']
-    : st.permission === 'granted' ? ['ok', `Connected to Excel · ${n ? `${n} workbook${n === 1 ? '' : 's'} open` : 'no workbook open'}`]
-    : st.permission === 'needed' ? ['warn', `macOS has not allowed ${BRAND.title} to control Excel. Turn it on in System Settings → Privacy & Security → Automation, then check again.`]
-    : st.error ? ['warn', st.error]
-    : ['', `Excel is running. Check the connection once: macOS will ask whether ${BRAND.title} may control Excel.`]
-  return (
-    <div className="form">
-      <p className="muted small">Lets the agent read and edit Excel workbooks without an Excel add-in. A workbook open in Excel is edited in place while you watch, and Excel recalculates; a closed .xlsx file is edited on disk. Attach one with the 📎 button in the chat box.</p>
-      <label>Work with Excel
-        <select value={s.excelEnabled ? 'on' : 'off'} onChange={(e) => setS({ ...s, excelEnabled: e.target.value === 'on' })}>
-          <option value="on">On — the agent has the Excel tools</option>
-          <option value="off">Off</option>
-        </select>
-      </label>
-      <div className="sub-h">Connection to Excel</div>
-      <div className="xl-status" role="status">
-        <span className={`dot ${tone}`} />
-        <span>{line}</span>
-        <div className="spacer" />
-        <button onClick={() => void check()} disabled={busy || !st?.running}>{busy ? 'Checking…' : st?.permission === 'granted' ? 'Check again' : 'Check Excel connection'}</button>
-      </div>
-      <label>Before changing a workbook
-        <select value={s.excelConfirm} onChange={(e) => setS({ ...s, excelConfirm: e.target.value as Settings['excelConfirm'] })}>
-          <option value="ask">Show the change and ask first (Interactive chats; Autopilot applies without asking)</option>
-          <option value="never">Apply without asking</option>
-        </select>
-      </label>
-      <label>Back up a workbook before the first edit
-        <select value={s.excelBackup ? 'on' : 'off'} onChange={(e) => setS({ ...s, excelBackup: e.target.value === 'on' })}>
-          <option value="on">On — saves name.backup.xlsx next to the file</option>
-          <option value="off">Off</option>
-        </select>
-      </label>
-      <p className="muted small">Reading never asks. For a workbook open in Excel the backup is a copy of the last saved version, and a change made by the agent is not saved until you save it in Excel.</p>
-    </div>
-  )
-}
+type OfficeKey = 'excel' | OfficeApp
+const OFFICE_KEYS: OfficeKey[] = ['excel', 'word', 'powerpoint']
+const OFFICE_LABEL: Record<OfficeKey, string> = { excel: 'Excel', ...OFFICE_NAME }
+const OFFICE_UNIT: Record<OfficeKey, string> = { excel: 'workbook', word: 'document', powerpoint: 'presentation' }
 
+/** Excel, Word and PowerPoint in one place: one switch, one connection check, one set of rules. */
 function OfficeTab({ s, setS }: { s: Settings; setS(s: Settings): void }) {
+  const [xl, setXl] = useState<ExcelStatus | null>(null)
   const [st, setSt] = useState<OfficeStatus | null>(null)
   const [busy, setBusy] = useState(false)
-  useEffect(() => { void window.desk.office.status(false).then(setSt) }, [])
-  const check = async () => { setBusy(true); try { setSt(await window.desk.office.status(true)) } finally { setBusy(false) } }
-  const line = (app: OfficeApp): [string, string] => {
-    const a = st?.[app], name = OFFICE_NAME[app], unit = app === 'word' ? 'document' : 'presentation', n = a?.docs.length ?? 0
-    return !a ? ['', 'Checking…']
-      : !a.installed ? ['', `${name} is not installed on this Mac.`]
-      : !a.running ? ['', `${name} is installed but not running. Open a ${unit}, or let the agent open a file by its path.`]
-      : a.permission === 'granted' ? ['ok', `Connected to ${name} · ${n ? `${n} ${unit}${n === 1 ? '' : 's'} open` : `no ${unit} open`}`]
+  const load = async (probe: boolean) => {
+    const [x, o] = await Promise.all([window.desk.excel.status(probe).catch(() => null), window.desk.office.status(probe).catch(() => null)])
+    setXl(x); setSt(o)
+  }
+  useEffect(() => { void load(false) }, [])
+  const check = async () => { setBusy(true); try { await load(true) } finally { setBusy(false) } }
+  const view = (k: OfficeKey) => (k === 'excel' ? xl && { ...xl, count: xl.workbooks.length } : st?.[k] && { ...st[k], count: st[k].docs.length }) || null
+  const on = (k: OfficeKey) => (k === 'excel' ? s.excelEnabled : s.officeEnabled)
+  const line = (k: OfficeKey): [string, string] => {
+    const a = view(k), name = OFFICE_LABEL[k], unit = OFFICE_UNIT[k]
+    return !on(k) ? ['', `${name} is turned off.`]
+      : !a ? ['', `${name}: checking…`]
+      : !a.installed ? ['', `${name} is not installed on this Mac.${k === 'excel' ? ' .xlsx files can still be read and edited on disk.' : ''}`]
+      : !a.running ? ['', `${name} is installed but not running. Open a ${unit} to work on it live.`]
+      : a.permission === 'granted' ? ['ok', `Connected to ${name} · ${a.count ? `${a.count} ${unit}${a.count === 1 ? '' : 's'} open` : `no ${unit} open`}`]
       : a.permission === 'needed' ? ['warn', `macOS has not allowed ${BRAND.title} to control ${name}. Turn it on in System Settings → Privacy & Security → Automation, then check again.`]
       : a.error ? ['warn', a.error]
-      : ['', `${name} is running. Check the connection once: macOS will ask whether ${BRAND.title} may control ${name}.`]
+      : ['', `${name} is running but not connected yet.`]
   }
-  const anyRunning = !!st && (st.word.running || st.powerpoint.running)
+  const live = OFFICE_KEYS.filter((k) => on(k) && view(k)?.running)
+  const waiting = live.filter((k) => view(k)?.permission !== 'granted')
+  const apps = s.excelEnabled && s.officeEnabled ? 'all' : s.excelEnabled ? 'excel' : s.officeEnabled ? 'office' : 'off'
+  const confirm = s.excelConfirm === 'ask' || s.officeConfirm === 'ask' ? 'ask' : 'never'
   return (
     <div className="form">
-      <p className="muted small">Lets the agent read and edit Word documents and PowerPoint presentations without an add-in. The file is edited in place in the app while you watch, and nothing is saved until you save it. Give the agent a file path and it opens the file for you.</p>
-      <label>Work with Word and PowerPoint
-        <select value={s.officeEnabled ? 'on' : 'off'} onChange={(e) => setS({ ...s, officeEnabled: e.target.value === 'on' })}>
-          <option value="on">On — the agent has the Word and PowerPoint tools</option>
+      <p className="muted small">Lets the agent read and edit Excel workbooks, Word documents and PowerPoint presentations without an add-in. A file open in its app is edited in place while you watch, and nothing is saved until you save it. Attach an open file with the 📎 button in the chat box, or give the agent a file path.</p>
+      <label>Work with Microsoft Office
+        <select value={apps} onChange={(e) => setS({ ...s, excelEnabled: e.target.value === 'all' || e.target.value === 'excel', officeEnabled: e.target.value === 'all' || e.target.value === 'office' })}>
+          <option value="all">On — Excel, Word and PowerPoint</option>
+          <option value="excel">Excel only</option>
+          <option value="office">Word and PowerPoint only</option>
           <option value="off">Off</option>
         </select>
       </label>
       <div className="sub-h">Connection</div>
-      {(['word', 'powerpoint'] as OfficeApp[]).map((app) => { const [tone, text] = line(app); return (
-        <div key={app} className="xl-status" role="status"><span className={`dot ${tone}`} /><span>{text}</span></div>
+      {OFFICE_KEYS.map((k) => { const [tone, text] = line(k); return (
+        <div key={k} className="xl-status" role="status"><span className={`dot ${tone}`} /><span>{text}</span></div>
       ) })}
-      <div className="xl-status"><button onClick={() => void check()} disabled={busy || !anyRunning}>{busy ? 'Checking…' : 'Check connection'}</button></div>
-      <label>Before changing a document or presentation
-        <select value={s.officeConfirm} onChange={(e) => setS({ ...s, officeConfirm: e.target.value as Settings['officeConfirm'] })}>
+      <div className="xl-status">
+        <button onClick={() => void check()} disabled={busy || !live.length}>{busy ? 'Checking…' : waiting.length ? 'Connect to Office' : 'Check again'}</button>
+        {!!waiting.length && !busy && <span className="muted small">Connects to {waiting.map((k) => OFFICE_LABEL[k]).join(', ')} in one go. macOS asks once for each app the first time.</span>}
+      </div>
+      <label>Before changing a file
+        <select value={confirm} onChange={(e) => { const v = e.target.value as Settings['excelConfirm']; setS({ ...s, excelConfirm: v, officeConfirm: v }) }}>
           <option value="ask">Show the change and ask first (Interactive chats; Autopilot applies without asking)</option>
           <option value="never">Apply without asking</option>
+        </select>
+      </label>
+      <label>Back up a file before the first edit
+        <select value={s.excelBackup || s.officeBackup ? 'on' : 'off'} onChange={(e) => { const v = e.target.value === 'on'; setS({ ...s, excelBackup: v, officeBackup: v }) }}>
+          <option value="on">On — saves name.backup.xlsx / .docx / .pptx next to the file</option>
+          <option value="off">Off</option>
         </select>
       </label>
       <label>Word: make edits as tracked changes
@@ -219,13 +200,7 @@ function OfficeTab({ s, setS }: { s: Settings; setS(s: Settings): void }) {
           <option value="on">On — edits appear as suggestions you accept or reject in Word</option>
         </select>
       </label>
-      <label>Back up a file before the first edit
-        <select value={s.officeBackup ? 'on' : 'off'} onChange={(e) => setS({ ...s, officeBackup: e.target.value === 'on' })}>
-          <option value="on">On — saves name.backup.docx / .pptx next to the file</option>
-          <option value="off">Off</option>
-        </select>
-      </label>
-      <p className="muted small">Reading never asks. The backup is a copy of the last saved version. Tracked changes apply to Word only; PowerPoint has no equivalent. Pictures, charts, headers and footers, and reordering slides are not supported.</p>
+      <p className="muted small">Reading never asks. The backup is a copy of the last saved version. A closed .xlsx file is edited on disk; a closed Word or PowerPoint file is opened in its app. Tracked changes apply to Word only. In Word and PowerPoint, pictures, charts, headers and footers, and reordering slides are not supported.</p>
     </div>
   )
 }

@@ -82,7 +82,7 @@ export class OfficeService {
   }
 
   private check(app: OfficeApp) {
-    if (!this.cfg().enabled) throw new Error('Working with Word and PowerPoint is turned off in Settings → Word & PowerPoint.')
+    if (!this.cfg().enabled) throw new Error('Working with Word and PowerPoint is turned off in Settings → MS Office.')
     if (!this.live.installed(app)) throw new Error(`${OFFICE_NAME[app]} is not installed on this Mac.`)
   }
 
