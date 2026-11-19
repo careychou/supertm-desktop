@@ -1,5 +1,9 @@
 # Release notes
 
+
+### Switching chats while one is running
+- A chat no longer goes blank when you switch to another chat before it finishes. Its reply, thinking, tool steps and any waiting permission or question now show when you switch back
+- Chats that already went blank are not restored by this fix
 ## 1.2.17
 
 ### File links

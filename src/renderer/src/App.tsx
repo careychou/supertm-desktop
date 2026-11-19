@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AttachMeta, BookmarkRow, FolderRow, Listing, ModelGroup, PreparedAttachment, PushEvent, RegistryInfo, SessionRow } from '../../shared/api'
+import { applyBackground, type BgView } from './background'
 import { insertBeforeTurn } from '../../shared/fork'
 import { applyEvent, runningBackground, settle, type Item } from './state'
 import { ItemList } from './components/Cards'
@@ -96,6 +97,8 @@ export function App() {
   queuesRef.current = queues
   const currentRef = useRef<SessionRow | null>(null)
   const itemsRef = useRef<Item[]>([])
+  // chats still running after the user switched away keep receiving their events here
+  const bgRef = useRef(new Map<string, BgView>())
   const scroller = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
   useEffect(() => {
@@ -157,12 +160,24 @@ export function App() {
         if (!hit.length) return
         queuesRef.current = { ...queuesRef.current, [p.sessionId]: q.filter((x) => !ids.includes(x.qid)) }
         setQueues(queuesRef.current)
-        if (!mine) return
+        if (!mine) {
+          const v = bgRef.current.get(p.sessionId)
+          if (v && p.event.kind === 'user_input') bgRef.current.set(p.sessionId, { ...v, items: [...v.items, ...hit.map((x) => userItem(x.text, x.attachments))] })
+          return
+        }
         if (p.event.kind === 'user_input') { stick.current = true; setItems((prev) => [...prev, ...hit.map((x) => userItem(x.text, x.attachments))]) }
         else setRestore((r) => ({ text: hit.map((x) => x.text).filter(Boolean).join('\n\n'), n: r.n + 1 }))
         return
       }
-      if (!mine) return
+      if (!mine) {
+        const v = bgRef.current.get(p.sessionId)
+        if (!v) return
+        const next = applyBackground(v, p)
+        bgRef.current.set(p.sessionId, next)
+        // kept until reopened, so a reopen racing this save still shows the finished turn
+        if (p.type === 'busy' && !p.busy) void window.desk.saveItems(p.sessionId, next.items)
+        return
+      }
       if (p.type === 'tokens') { setTokens(p.tokens); return }
       if (p.type === 'compacted') { setItems((prev) => insertBeforeTurn(prev, p.item as unknown as Item, p.beforeTurn)); return }
       if (p.type === 'agent') setItems((prev) => applyEvent(prev, p.event))
@@ -186,14 +201,19 @@ export function App() {
   }, [items, perms, asks])
 
   const persistCurrent = async () => {
-    if (current && !busy) await window.desk.saveItems(current.id, itemsRef.current)
+    if (!current) return
+    if (busy) bgRef.current.set(current.id, { items: itemsRef.current, perms, asks, tokens })
+    else await window.desk.saveItems(current.id, itemsRef.current)
   }
 
   const open = async (id: string) => {
     if (id === current?.id) return
     await persistCurrent()
     const r = await window.desk.openSession(id)
-    setCurrent(r.session); setItems(r.busy ? (r.items as Item[]) : settle(r.items as Item[])); setBusy(r.busy); setPerms([]); setAsks([]); setTokens(r.tokens)
+    const bg = bgRef.current.get(id)
+    bgRef.current.delete(id)
+    const its = bg ? bg.items : (r.items as Item[])
+    setCurrent(r.session); setItems(r.busy ? its : settle(its)); setBusy(r.busy); setPerms(r.busy ? bg?.perms ?? [] : []); setAsks(r.busy ? bg?.asks ?? [] : []); setTokens(bg?.tokens ?? r.tokens)
     stick.current = true
   }
 
