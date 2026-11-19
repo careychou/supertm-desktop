@@ -14,8 +14,11 @@ export interface AttachLimits {
 export const DEFAULT_LIMITS: AttachLimits = { imageMaxEdge: 1568, imageQuality: 82, imageMaxKB: 1500, docMaxChars: 80000 }
 
 /** UI-side description of a prepared attachment (stored with the chat for display). */
-/** `excel`: an Excel workbook the agent can also reach with its excel_* tools: open in Excel ('live') or a file on disk. */
-export interface AttachMeta { name: string; kind: 'image' | 'doc'; thumb?: string; info: string; excel?: 'live' | 'file' }
+/**
+ * `excel`: an Excel workbook the agent can also reach with its excel_* tools: open in Excel ('live') or a file on disk.
+ * `office`: a document open in Word or a presentation open in PowerPoint, which the agent reaches with its word_* / powerpoint_* tools.
+ */
+export interface AttachMeta { name: string; kind: 'image' | 'doc'; thumb?: string; info: string; excel?: 'live' | 'file'; office?: 'word' | 'powerpoint' }
 
 /** Scales (w, h) so the long edge is at most `maxEdge`; never upscales. */
 export function fitDims(w: number, h: number, maxEdge: number): { width: number; height: number } {

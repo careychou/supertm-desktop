@@ -219,9 +219,9 @@ export function ItemList({ items, live, onFork }: { items: Item[]; live: boolean
           case 'user': return (
             <div className="msg user">
               {it.attachments?.length ? <div className="atts">{it.attachments.map((a, k) => (
-                <div key={k} className={`att-chip${a.excel ? ` xl ${a.excel}` : ''}`} title={`${a.name}\n${a.info}`}>
-                  {a.thumb ? <img src={a.thumb} alt="" /> : <span className="att-ico">{a.excel ? 'X' : '📄'}</span>}
-                  <span className="att-text"><span className="att-name">{a.name}{a.excel && <span className={`xl-badge ${a.excel}`}>{a.excel === 'live' ? 'Live' : 'File'}</span>}</span><span className="att-info">{a.info}</span></span>
+                <div key={k} className={`att-chip${a.excel ? ` xl ${a.excel}` : ''}${a.office ? ` xl live ${a.office}` : ''}`} title={`${a.name}\n${a.info}`}>
+                  {a.thumb ? <img src={a.thumb} alt="" /> : <span className="att-ico">{a.excel ? 'X' : a.office === 'word' ? 'W' : a.office ? 'P' : '📄'}</span>}
+                  <span className="att-text"><span className="att-name">{a.name}{a.excel && <span className={`xl-badge ${a.excel}`}>{a.excel === 'live' ? 'Live' : 'File'}</span>}{a.office && <span className={`xl-badge live ${a.office}`}>Live</span>}</span><span className="att-info">{a.info}</span></span>
                 </div>))}</div> : null}
               {it.text && <div className="bubble">{it.text}</div>}
             </div>)

@@ -1,12 +1,15 @@
 import fs from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import type { ToolContext, ToolDef } from '../../engine/tools/types'
 import { head, resolvePath } from '../../engine/tools/util'
 import {
-  OFFICE_NAME, SLIDE_LAYOUTS, WORD_COLORS, clipText, parseHexColor, parseSpan, pptReadText, wordReadText,
+  OFFICE_NAME, SLIDE_LAYOUTS, WORD_COLORS, clipText, officeNote, officeWhere, parseHexColor, parseSpan, pptReadText, wordReadText,
   type OfficeApp, type OfficeAppStatus, type OfficeDoc, type OfficePreview, type OfficeStatus, type PptRead, type WordRead
 } from '../../shared/office'
 import { OfficeError, type OfficeBackend, type OfficeReq } from './live'
+import type { AttachMeta } from '../../shared/attach'
+import type { Attachment } from '../../engine/content'
 
 export interface OfficeConfig {
   enabled: boolean
@@ -57,6 +60,15 @@ export class OfficeService {
       }
     }
     return { word: await one('word'), powerpoint: await one('powerpoint') }
+  }
+
+  /** A chip for a document open in Word or a presentation open in PowerPoint: the model gets a reference (where the cursor is), not the content. */
+  async attach(app: OfficeApp, name: string): Promise<{ id: string; att?: Attachment; meta: AttachMeta; error?: string }> {
+    const id = randomUUID(), appName = OFFICE_NAME[app]
+    const st = (await this.status(true))[app]
+    const d = st.docs.find((x) => x.name === name)
+    if (!d) return { id, meta: { name, kind: 'doc', info: `Not open in ${appName}`, office: app }, error: st.error ?? `${name} is no longer open in ${appName}` }
+    return { id, att: { kind: 'text', name: d.name, text: officeNote(app, d), note: `${app === 'word' ? 'Word document' : 'PowerPoint presentation'}, open in ${appName}` }, meta: { name: d.name, kind: 'doc', info: officeWhere(app, d), office: app } }
   }
 
   /**

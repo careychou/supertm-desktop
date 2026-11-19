@@ -139,7 +139,7 @@ Type in the box at the bottom and press **Enter** (**Shift+Enter** adds a new li
 | Control | What it does |
 |---|---|
 | **Model** (e.g. `claude-sonnet-5`) | Pick the model for this chat |
-| **📎** / paste / drop | Attach files and screenshots. Images get downscaled and documents trimmed to save tokens. Also lists the workbooks open in Excel (see [Work with Excel](#work-with-excel)). |
+| **📎** / paste / drop | Attach files and screenshots. Images get downscaled and documents trimmed to save tokens. Also lists the workbooks open in Excel, the documents open in Word and the presentations open in PowerPoint (see [Work with Excel](#work-with-excel) and [Work with Word and PowerPoint](#work-with-word-and-powerpoint)). |
 | **Folder** (e.g. `demo-app`) | The working folder the agent runs in |
 | **✋ Interactive / 🚀 Autopilot** | Interactive asks before running tools that change things. Autopilot runs them without asking. |
 | **💭 Effort** | How much the model thinks before it answers (off, low, medium, high) |
@@ -220,7 +220,7 @@ For how this works inside, see [Excel: how it works](excel.md).
 
 SuperTM can also read and edit Word documents and PowerPoint presentations directly, with no add-in. The file is edited in place in Word or PowerPoint while you watch, and nothing is saved until you save it.
 
-**1. Open the document or presentation**, or give its path in your prompt (the app opens it for you). Put your cursor where you want the work done if you like; the agent can see which paragraph or slide you are on.
+**1. Open the document or presentation**, then click 📎 and pick it under *Use a document open in Word* or *Use a presentation open in PowerPoint*. A chip with a **Live** badge shows the paragraph your cursor is in, or the slide on screen; it is looked up again when you press Enter, so you can move the cursor after attaching. You can also skip the chip and just name the file or give its path in your prompt (the app opens it for you).
 
 **2. Ask in plain words.** For example: "Tighten the summary paragraph in Recap.docx", "Add a comment on the sales figure asking for the source", "Add a next-steps slide to the Q3 deck with these three bullets".
 

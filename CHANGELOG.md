@@ -2,6 +2,12 @@
 
 ## 1.2.16
 
+### Attach an open Word document or PowerPoint presentation
+- The 📎 menu now lists the documents open in Word and the presentations open in PowerPoint, next to the workbooks open in Excel. Before, it listed Excel only, so an open document could not be picked even though Settings showed Word as connected
+- Picking one adds a **Live** chip (blue for Word, orange for PowerPoint) showing the paragraph your cursor is in or the slide on screen. The agent gets a reference to the document, not its text, and reads what it needs
+- The chip follows you: the cursor position and selection are looked up again when you press Enter, so "tighten this paragraph" means the one you are in
+- The menu appears when either Excel or Word and PowerPoint are turned on in Settings
+
 ### Work with Word and PowerPoint without an add-in
 - The agent can now read and edit Word documents and PowerPoint presentations live, the same way it works with Excel: the file changes in the app while you watch, and nothing is saved until you save
 - **Word:** read the document, replace, insert or delete a paragraph, format text or apply a style, add review comments, and insert or edit tables

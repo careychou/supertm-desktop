@@ -69,7 +69,7 @@ const api: DeskApi = {
   importScan: inv('importScan') as any,
   importExternal: inv('importExternal') as any,
   excel: { status: inv('excel:status') as any, attach: inv('excel:attach') as any },
-  office: { status: inv('office:status') as any },
+  office: { status: inv('office:status') as any, attach: inv('office:attach') as any },
   plugins: {
     status: inv('plugins:status') as any,
     statuses: inv('plugins:statuses') as any,

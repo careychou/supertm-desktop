@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { hasMemory, type Memory } from '../../../shared/memory'
 import type { AttachInput, ExcelStatus, ModelGroup, PreparedAttachment } from '../../../shared/api'
+import { OFFICE_NAME, officeWhere, type OfficeApp, type OfficeStatus } from '../../../shared/office'
 import { BRAND } from '../../../shared/brand'
 import { useEscape } from '../hooks/useEscape'
 import { bareModel, isTtsId, TTS_VOICES } from '../../../shared/providers'
@@ -87,26 +88,45 @@ export function Composer(p: Props) {
   }
   const pick = async () => { const r = await window.desk.pickAttachments(); if (r.length) setAtts((a) => [...a, ...r]) }
 
-  // Excel: the paperclip opens a menu that also lists the workbooks open in Excel
+  // Excel, Word, PowerPoint: the paperclip opens a menu that also lists what is open in each app
   const [xl, setXl] = useState<ExcelStatus | null>(null)
+  const [off, setOff] = useState<OfficeStatus | null>(null)
   const [xlMenu, setXlMenu] = useState(false)
   const [xlLoading, setXlLoading] = useState(false)
-  useEffect(() => { void window.desk.excel.status(false).then(setXl).catch(() => setXl(null)) }, [])
+  const [offLoading, setOffLoading] = useState(false)
+  const xlOn = !!xl?.enabled && xl.installed
+  const offApps = (['word', 'powerpoint'] as OfficeApp[]).filter((a) => off?.[a].enabled && off[a].installed)
+  useEffect(() => {
+    void window.desk.excel.status(false).then(setXl).catch(() => setXl(null))
+    void window.desk.office.status(false).then(setOff).catch(() => setOff(null))
+  }, [])
   useEscape(() => setXlMenu(false), xlMenu)
   const openClip = async () => {
-    const st = await window.desk.excel.status(false).catch(() => null)
-    setXl(st)
-    if (!st?.enabled || !st.installed) return pick()
+    const [st, os] = await Promise.all([window.desk.excel.status(false).catch(() => null), window.desk.office.status(false).catch(() => null)])
+    setXl(st); setOff(os)
+    const hasXl = !!st?.enabled && st.installed, hasOff = !!os && (['word', 'powerpoint'] as OfficeApp[]).some((a) => os[a].enabled && os[a].installed)
+    if (!hasXl && !hasOff) return pick()
     setXlMenu(true)
-    if (!st.running) return
-    setXlLoading(true)
-    setXl(await window.desk.excel.status(true).catch(() => st))
-    setXlLoading(false)
+    // the apps are asked separately so a slow one does not hold up the others
+    if (hasXl && st!.running) {
+      setXlLoading(true)
+      void window.desk.excel.status(true).catch(() => st).then((r) => { setXl(r); setXlLoading(false) })
+    }
+    if (hasOff && (os!.word.running || os!.powerpoint.running)) {
+      setOffLoading(true)
+      void window.desk.office.status(true).catch(() => os).then((r) => { setOff(r); setOffLoading(false) })
+    }
   }
   const useWorkbook = async (name: string) => {
     setXlMenu(false)
     const r = await window.desk.excel.attach(name)
     setAtts((a) => [...a.filter((x) => !(x.meta.excel === 'live' && x.meta.name === name)), r])
+    ta.current?.focus()
+  }
+  const useDocument = async (app: OfficeApp, name: string) => {
+    setXlMenu(false)
+    const r = await window.desk.office.attach(app, name)
+    setAtts((a) => [...a.filter((x) => !(x.meta.office === app && x.meta.name === name)), r])
     ta.current?.focus()
   }
 
@@ -125,10 +145,10 @@ export function Composer(p: Props) {
     if ((!text.trim() && !ready.length) || preparing || sending.current) return
     sending.current = true
     try {
-      // a live workbook chip follows the selection: look it up again at the moment of sending
+      // a live workbook, document or presentation chip follows the selection: look it up again at the moment of sending
       const fresh = await Promise.all(ready.map(async (a) => {
-        if (a.meta.excel !== 'live') return a
-        const r = await window.desk.excel.attach(a.meta.name).catch(() => null)
+        if (a.meta.excel !== 'live' && !a.meta.office) return a
+        const r = await (a.meta.office ? window.desk.office.attach(a.meta.office, a.meta.name) : window.desk.excel.attach(a.meta.name)).catch(() => null)
         return r?.att ? r : a
       }))
       p.onSend(text.trim(), fresh)
@@ -144,7 +164,7 @@ export function Composer(p: Props) {
           <div className="xl-menu" role="menu">
             <button onClick={() => { setXlMenu(false); void pick() }}>📎 Attach files…</button>
             <div className="menu-sep" />
-            <div className="xl-menu-h"><span className="xl-dot">X</span> Use a workbook open in Excel</div>
+            {xlOn && <><div className="xl-menu-h"><span className="xl-dot">X</span> Use a workbook open in Excel</div>
             {!xl?.running ? <div className="xl-menu-note">Excel isn't running. Open a workbook in Excel, then come back here.</div>
               : xlLoading ? <div className="xl-menu-note">Asking Excel…</div>
               : xl.permission === 'needed' ? <div className="xl-menu-note">macOS hasn't allowed {BRAND.title} to control Excel yet. Turn it on in System Settings → Privacy &amp; Security → Automation, then try again.</div>
@@ -154,7 +174,25 @@ export function Composer(p: Props) {
                 <button key={w.name} className="xl-wb" onClick={() => void useWorkbook(w.name)} title={w.path || 'Not saved yet'}>
                   <span className="xl-wb-name">{w.name}</span>
                   <span className="muted">{w.activeSheet ? `${w.activeSheet}${w.selection ? ` · ${w.selection} selected` : ''}` : `${w.sheets.length} sheet${w.sheets.length === 1 ? '' : 's'}`}</span>
-                </button>))}
+                </button>))}</>}
+            {offApps.map((app, k) => {
+              const a = off![app], name = OFFICE_NAME[app], unit = app === 'word' ? 'document' : 'presentation'
+              return (
+                <div key={app}>
+                  {(xlOn || k > 0) && <div className="menu-sep" />}
+                  <div className="xl-menu-h"><span className={`xl-dot ${app}`}>{app === 'word' ? 'W' : 'P'}</span> Use a {unit} open in {name}</div>
+                  {!a.running ? <div className="xl-menu-note">{name} isn't running. Open a {unit} in {name}, then come back here.</div>
+                    : offLoading ? <div className="xl-menu-note">Asking {name}…</div>
+                    : a.permission === 'needed' ? <div className="xl-menu-note">macOS hasn't allowed {BRAND.title} to control {name} yet. Turn it on in System Settings → Privacy &amp; Security → Automation, then try again.</div>
+                    : a.error ? <div className="xl-menu-note">{a.error}</div>
+                    : !a.docs.length ? <div className="xl-menu-note">No {unit} is open in {name}.</div>
+                    : a.docs.map((d) => (
+                      <button key={d.name} className="xl-wb" onClick={() => void useDocument(app, d.name)} title={d.path || 'Not saved yet'}>
+                        <span className="xl-wb-name">{d.name}</span>
+                        <span className="muted">{officeWhere(app, d)}</span>
+                      </button>))}
+                </div>)
+            })}
           </div>
         </>
       )}
@@ -163,9 +201,9 @@ export function Composer(p: Props) {
         {atts.length > 0 && (
           <div className="att-row">
             {atts.map((a) => (
-              <div key={a.id} className={`att-chip${a.error ? ' err' : ''}${a.pending ? ' pending' : ''}${a.meta.excel ? ` xl ${a.meta.excel}` : ''}`} title={a.error ?? `${a.meta.name}\n${a.meta.info}${a.meta.excel === 'live' ? `\nOpen in Excel: ${BRAND.title} reads and edits it in place.` : a.meta.excel === 'file' ? `\nA file on disk: ${BRAND.title} can read more of it or edit it.` : ''}`}>
-                {a.meta.thumb ? <img src={a.meta.thumb} alt="" /> : <span className="att-ico">{a.pending ? '⋯' : a.error ? '⚠' : a.meta.excel ? 'X' : '📄'}</span>}
-                <span className="att-text"><span className="att-name">{a.meta.name}{a.meta.excel && !a.error && <span className={`xl-badge ${a.meta.excel}`}>{a.meta.excel === 'live' ? 'Live' : 'File'}</span>}</span><span className="att-info">{a.error ?? a.meta.info}{a.meta.excel === 'live' && !a.error ? ' · follows your selection' : ''}</span></span>
+              <div key={a.id} className={`att-chip${a.error ? ' err' : ''}${a.pending ? ' pending' : ''}${a.meta.excel ? ` xl ${a.meta.excel}` : ''}${a.meta.office ? ` xl live ${a.meta.office}` : ''}`} title={a.error ?? `${a.meta.name}\n${a.meta.info}${a.meta.office ? `\nOpen in ${OFFICE_NAME[a.meta.office]}: ${BRAND.title} reads and edits it in place.` : a.meta.excel === 'live' ? `\nOpen in Excel: ${BRAND.title} reads and edits it in place.` : a.meta.excel === 'file' ? `\nA file on disk: ${BRAND.title} can read more of it or edit it.` : ''}`}>
+                {a.meta.thumb ? <img src={a.meta.thumb} alt="" /> : <span className="att-ico">{a.pending ? '⋯' : a.error ? '⚠' : a.meta.excel ? 'X' : a.meta.office === 'word' ? 'W' : a.meta.office ? 'P' : '📄'}</span>}
+                <span className="att-text"><span className="att-name">{a.meta.name}{a.meta.excel && !a.error && <span className={`xl-badge ${a.meta.excel}`}>{a.meta.excel === 'live' ? 'Live' : 'File'}</span>}{a.meta.office && !a.error && <span className={`xl-badge live ${a.meta.office}`}>Live</span>}</span><span className="att-info">{a.error ?? a.meta.info}{(a.meta.excel === 'live' || a.meta.office) && !a.error ? ' · follows your selection' : ''}</span></span>
                 {!a.pending && <button onClick={() => setAtts(atts.filter((x) => x !== a))} title="Remove">×</button>}
               </div>
             ))}
@@ -197,7 +235,7 @@ export function Composer(p: Props) {
           </div>
         )}
         <div className="composer-bar">
-          <button className="clip" onClick={() => void openClip()} title={`Attach files (or paste / drop them). Images are downscaled and documents trimmed to save tokens.${xl?.enabled && xl.installed ? ' Also lists the workbooks open in Excel.' : ''}`}>📎</button>
+          <button className="clip" onClick={() => void openClip()} title={`Attach files (or paste / drop them). Images are downscaled and documents trimmed to save tokens.${xlOn || offApps.length ? ` Also lists what is open in ${[xlOn && 'Excel', ...offApps.map((a) => OFFICE_NAME[a])].filter(Boolean).join(', ')}.` : ''}`}>📎</button>
           <select className="model-pick" value={p.model} onChange={(e) => p.onModel(e.target.value)} title={p.model}>
             {!p.models.includes(p.model) && <option value={p.model}>{short(p.model)}</option>}
             {(p.groups?.length ?? 0) > 1

@@ -9,7 +9,7 @@ import type { ModelGroup, ProviderEntry } from './providers'
 import type { Attachment } from '../engine/content'
 import type { AttachMeta } from './attach'
 import type { ExcelStatus } from './excel'
-import type { OfficeStatus } from './office'
+import type { OfficeApp, OfficeStatus } from './office'
 import type { FolderConfig, MarketPlugin, PluginResult, PluginsStatus, PluginUpdates } from './plugins'
 
 export type { Attachment, AttachMeta }
@@ -132,6 +132,8 @@ export interface DeskApi {
   office: {
     /** Are Word and PowerPoint installed / running, and what is open. `probe` talks to the apps, which makes macOS ask for permission the first time. */
     status(probe?: boolean): Promise<OfficeStatus>
+    /** A composer chip for a document open in Word or a presentation open in PowerPoint (where the cursor is, not the content). */
+    attach(app: OfficeApp, name: string): Promise<PreparedAttachment>
   }
 }
 

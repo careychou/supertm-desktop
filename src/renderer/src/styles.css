@@ -544,6 +544,13 @@ button.danger { color: var(--fail); }
 .xl-badge.live { background: #107c41; color: #fff; }
 .xl-badge.file { background: #eef1f4; color: #3b434b; border: 1px solid var(--line); }
 .xl-dot { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 3px; background: #107c41; color: #fff; font-size: 10px; font-weight: 700; vertical-align: -2px; }
+.att-chip.xl.word { border-color: #b9cdea; background: #e9f0fa; }
+.att-chip.xl.word .att-ico, .xl-badge.live.word, .xl-dot.word { background: #185abd; }
+.msg.user .atts .att-chip.xl.word { background: #e9f0fa; }
+.att-chip.xl.powerpoint { border-color: #efc5b8; background: #fbeee9; }
+.att-chip.xl.powerpoint .att-ico, .xl-badge.live.powerpoint, .xl-dot.powerpoint { background: #c43e1c; }
+.msg.user .atts .att-chip.xl.powerpoint { background: #fbeee9; }
+.xl-menu { max-height: min(60vh, 460px); overflow-y: auto; }
 .xl-menu { position: absolute; left: 8px; bottom: 100%; margin-bottom: 6px; z-index: 21; width: 340px; max-width: calc(100% - 16px); background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.16); padding: 5px; }
 .xl-menu button { display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; padding: 6px 10px; border-radius: 6px; font-size: 13.5px; }
 .xl-menu button:hover { background: var(--hover); }

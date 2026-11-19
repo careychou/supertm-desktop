@@ -29,6 +29,27 @@ export interface OfficeAppStatus {
 }
 export type OfficeStatus = Record<OfficeApp, OfficeAppStatus>
 
+/** One line for the composer chip and the attach menu: where the user is in the document. */
+export function officeWhere(app: OfficeApp, d: OfficeDoc): string {
+  const unit = app === 'word' ? 'paragraph' : 'slide'
+  return d.at || `${d.size.toLocaleString('en-US')} ${unit}${d.size === 1 ? '' : 's'}`
+}
+
+/** The reference the model gets when the user attaches an open document or presentation: enough to call the tools, not the content. */
+export function officeNote(app: OfficeApp, d: OfficeDoc): string {
+  const word = app === 'word', unit = word ? 'paragraph' : 'slide', n = (k: number, w: string) => `${k.toLocaleString('en-US')} ${w}${k === 1 ? '' : 's'}`
+  const sel = d.selection ? String(d.selection).replace(/\s+/g, ' ').trim() : ''
+  return [
+    word ? `This document is open in Word right now. Use the word_* tools with document "${d.name}"; edits appear live and nothing is saved until the user saves.`
+      : `This presentation is open in PowerPoint right now. Use the powerpoint_* tools with presentation "${d.name}"; edits appear live and nothing is saved until the user saves.`,
+    d.path ? `Path: ${d.path}` : 'Never saved to disk.',
+    `Size: ${n(d.size, unit)}${word ? ` · ${n(d.tables ?? 0, 'table')} · ${n(d.comments ?? 0, 'comment')} · track changes ${d.tracking ? 'on' : 'off'}` : ''}`,
+    d.at ? (word ? `The user's cursor is in ${d.at}.` : `On the user's screen: ${d.at}.`) : '',
+    sel ? `The user's current selection: "${sel.length > 300 ? `${sel.slice(0, 299)}…` : sel}". "This", "this part" or "here" in the prompt mean this selection.` : d.at ? `"This", "here" or "this ${unit}" in the prompt mean that place.` : '',
+    `The content is not included here: read it with ${word ? 'word_read' : 'powerpoint_read'} before answering or editing.`
+  ].filter(Boolean).join('\n')
+}
+
 /** What the approval card shows before a change; sent as JSON in the permission request's `detail`. */
 export interface OfficePreview {
   app: OfficeApp

@@ -16,9 +16,17 @@ SuperTM Desktop reads and edits Word documents and PowerPoint presentations with
 | Tools | `src/main/office/service.ts` | Defines the tools, opens files, asks for approval, makes backups, formats the result text |
 | Live backend | `src/main/office/live.ts` | One script, run by `osascript`, holding every Word and PowerPoint operation |
 | Shared helpers | `src/shared/office.ts` | Types, the text the model reads, span and colour parsing |
-| Wiring | `src/main/office/index.ts` | Registers the tools and one IPC call (`office:status`) |
+| Wiring | `src/main/office/index.ts` | Registers the tools and two IPC calls (`office:status`, `office:attach`) |
 | Chat UI | `src/renderer/src/components/OfficeViews.tsx` | The approval card and the before/after view in tool rows |
-| Settings | `SettingsModal.tsx` | Settings → Word & PowerPoint |
+| Composer and Settings | `Composer.tsx`, `SettingsModal.tsx` | The paperclip menu, the document chip, and Settings → Word & PowerPoint |
+
+## Attaching an open document
+
+The paperclip menu lists what is open in Word and PowerPoint, under the workbooks open in Excel. Picking a document calls `office:attach`, which builds a short *document note*: the name to pass to the tools, the path, the size (paragraphs, tables, comments and track-changes state for Word; slides for PowerPoint), and where the user is (the paragraphs the cursor or selection covers, or the slide on screen, plus up to 300 characters of selected text). The content is not included; the note tells the model to read it with `word_read` or `powerpoint_read`.
+
+Just before sending, the app asks again, so the note carries the cursor position at the moment the user pressed Enter. If the document was closed in between, the chip from the first lookup is sent as it was.
+
+The menu is shown when Excel, or Word and PowerPoint, are turned on and installed. Each app is asked separately, so a slow answer from one does not hold up the others. Opening the menu is one of the moments the app talks to Word or PowerPoint, so the first time macOS may ask whether the app may control them.
 
 ## The tools
 
@@ -74,4 +82,4 @@ One call is deliberately never made: creating a Word table with a `text object` 
 
 ## Tests
 
-`tests/office.test.ts` runs the tools against a stand-in for the two apps: reads, edits, the stale-text guard, approval, tracked changes, backups, and opening a file by path.
+`tests/office.test.ts` runs the tools against a stand-in for the two apps: reads, edits, the stale-text guard, approval, tracked changes, backups, opening a file by path, and the note built when an open document is attached.

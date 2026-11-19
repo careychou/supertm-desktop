@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { OfficeService, officeTools, type OfficeConfig } from '../src/main/office/service'
 import { OfficeError, officeError, type OfficeBackend, type OfficeReq } from '../src/main/office/live'
-import { parseHexColor, parseSpan, pptReadText, wordReadText, type OfficeApp, type OfficePreview } from '../src/shared/office'
+import { officeNote, officeWhere, parseHexColor, parseSpan, pptReadText, wordReadText, type OfficeApp, type OfficePreview } from '../src/shared/office'
 import type { ToolContext } from '../src/engine/tools/types'
 
 /** Stands in for Word and PowerPoint: a document is a list of paragraphs, a deck is slides of text shapes. */
@@ -233,5 +233,36 @@ describe('shared behaviour', () => {
     expect(st.word).toMatchObject({ running: true, permission: 'granted', active: 'Recap.docx' })
     expect(st.powerpoint).toMatchObject({ running: false, docs: [] })
     expect(fake.calls.filter((c) => c.app === 'powerpoint')).toHaveLength(0)
+  })
+  it('attaches an open document or presentation as a reference, not its content', async () => {
+    const w = await svc.attach('word', 'Recap.docx')
+    expect(w.meta).toMatchObject({ name: 'Recap.docx', kind: 'doc', office: 'word', info: 'paragraph 2' })
+    expect(w.att).toMatchObject({ kind: 'text', name: 'Recap.docx', note: 'Word document, open in Word' })
+    const text = (w.att as { text: string }).text
+    expect(text).toMatch(/word_\* tools with document "Recap\.docx"/)
+    expect(text).toMatch(/cursor is in paragraph 2/)
+    expect(text).toMatch(/3 paragraphs · 0 tables · 0 comments · track changes off/)
+    expect(text).toMatch(/Never saved to disk/)
+    expect(text).not.toMatch(/Sales rose/)
+    const p = await svc.attach('powerpoint', 'Q3.pptx')
+    expect(p.meta).toMatchObject({ office: 'powerpoint', info: 'slide 1' })
+    expect((p.att as { text: string }).text).toMatch(/powerpoint_\* tools with presentation "Q3\.pptx"[\s\S]*On the user's screen: slide 1[\s\S]*powerpoint_read/)
+  })
+  it('says so when the attached document was closed or the app quit', async () => {
+    const gone = await svc.attach('word', 'Gone.docx')
+    expect(gone.att).toBeUndefined()
+    expect(gone.error).toMatch(/no longer open in Word/)
+    expect(gone.meta).toMatchObject({ name: 'Gone.docx', office: 'word' })
+    fake.on.powerpoint = false
+    expect((await svc.attach('powerpoint', 'Q3.pptx')).error).toMatch(/no longer open in PowerPoint/)
+  })
+  it('describes the selection and falls back to the size when the cursor is unknown', () => {
+    const d = { name: 'A.docx', path: '/x/A.docx', saved: true, size: 1, tables: 1, comments: 2, tracking: true }
+    expect(officeWhere('word', d)).toBe('1 paragraph')
+    expect(officeWhere('powerpoint', { ...d, size: 12 })).toBe('12 slides')
+    const note = officeNote('word', { ...d, at: 'paragraphs 4–6', selection: 'Margin\rheld  flat' })
+    expect(note).toMatch(/Path: \/x\/A\.docx/)
+    expect(note).toMatch(/1 paragraph · 1 table · 2 comments · track changes on/)
+    expect(note).toMatch(/current selection: "Margin held flat"/)
   })
 })
