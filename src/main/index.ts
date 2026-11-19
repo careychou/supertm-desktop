@@ -26,6 +26,7 @@ import { azureLogin, azureUsageProvider, cancelAzureLogin, getAzureUsage, getLoc
 import { registerPlugins } from './plugins'
 import { registerUpdates } from './updates'
 import { registerExcel } from './excel'
+import { existingPaths, linkAction, resolveLocal } from './filelinks'
 import { autoCompactDecision, estimateTokens, keepLastPlan, splitHistoryTurns, type CompactPlan } from '../engine/compact'
 
 // GUI apps launched from Finder get a minimal PATH; give shell tools a usable one.
@@ -277,6 +278,16 @@ function registerIpc() {
   })
   ipcMain.handle('copyText', (_e, t: string) => clipboard.writeText(t))
   ipcMain.handle('revealFile', (_e, p: string) => eshell.showItemInFolder(p))
+  ipcMain.handle('pathsExist', (_e, raws: string[], cwd: string) => existingPaths(raws, cwd))
+  ipcMain.handle('openPath', async (_e, raw: string, cwd: string, reveal?: boolean) => {
+    const p = resolveLocal(String(raw), String(cwd ?? ''))
+    const act = linkAction(p, reveal)
+    if (act === 'missing') return { ok: false, path: p, error: `File not found: ${p}` }
+    if (act === 'reveal') { eshell.showItemInFolder(p); return { ok: true, path: p, revealed: true } }
+    const err = await eshell.openPath(p)
+    if (err) { eshell.showItemInFolder(p); return { ok: true, path: p, revealed: true } }
+    return { ok: true, path: p }
+  })
   ipcMain.handle('loadItems', (_e, id: string) => store.loadUiItems(id))
   ipcMain.handle('respondPermission', (_e, rid: string, d: PermissionDecision) => {
     const p = pending.get(rid)

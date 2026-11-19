@@ -1,5 +1,14 @@
 # Release notes
 
+## 1.2.15
+
+### Files and links you can click
+- When an answer names a file it made or changed (a report, HTML page, workbook, export), the name is a link: click it to open the file in its default app, or ⌘-click to show it in Finder
+- This works for links the assistant writes and for file paths it puts in `code` style, as long as the file exists. Paths can be absolute, start with `~/`, or be relative to the chat's working folder, and may contain spaces
+- Web addresses in `code` style are clickable too and open in your browser
+- Scripts, apps and other files that could run something are shown in Finder instead of opened. A link to a file that is gone says so
+- The assistant is now told to give every artifact it produces, local or uploaded, as a clickable link
+
 ## 1.2.14
 
 ### Dialogs resize from any edge

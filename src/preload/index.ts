@@ -27,6 +27,8 @@ const api: DeskApi = {
   saveExport: inv('saveExport') as any,
   copyText: inv('copyText') as any,
   revealFile: inv('revealFile') as any,
+  pathsExist: inv('pathsExist') as any,
+  openPath: inv('openPath') as any,
   loadItems: inv('loadItems') as any,
   deleteSession: inv('deleteSession') as any,
   send: inv('send') as any,

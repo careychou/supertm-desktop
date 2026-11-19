@@ -16,6 +16,7 @@ const BASE = `You are ${BRAND.title}, an interactive AI agent running on the use
 - Use shell mode "async" for servers, watchers and long jobs, then read_shell / write_shell / stop_shell.
 - Use web_fetch to read web pages. For multi-step work, track a plan in the sql tool's todos table.
 - Before a batch of tool calls, write one short sentence saying what you're about to do and why.
+- When you create or update something the user will want to open (a report, HTML page, document, workbook, chart, export), give it in your answer as a markdown link the user can click: for a local file, link its absolute path, e.g. [report.html](/Users/me/project/report.html), wrapping a path that has spaces in angle brackets, e.g. [Q3 recap](</Users/me/project/Q3 recap.html>); for anything published or uploaded, link its full https URL. Do not leave such a path or URL as plain text.
 - Never print secret values. Be concise in final answers.`
 
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s)

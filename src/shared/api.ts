@@ -66,6 +66,10 @@ export interface DeskApi {
   saveExport(name: string, markdown: string): Promise<string | null>
   copyText(text: string): Promise<void>
   revealFile(path: string): Promise<void>
+  /** For each path a chat mentions (absolute, ~/ or relative to cwd): its absolute form if it exists, else null. */
+  pathsExist(paths: string[], cwd: string): Promise<(string | null)[]>
+  /** Opens a file a chat links to in its default app; types that could run code, or reveal=true, show it in Finder instead. */
+  openPath(path: string, cwd: string, reveal?: boolean): Promise<{ ok: boolean; path: string; revealed?: boolean; error?: string }>
   loadItems(sessionId: string): Promise<unknown[]>
   deleteSession(id: string): Promise<void>
   /** Sends a prompt. While the chat is working it is queued under `qid` and joins at the next step. */

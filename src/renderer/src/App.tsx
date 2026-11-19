@@ -3,6 +3,7 @@ import type { AttachMeta, BookmarkRow, FolderRow, Listing, ModelGroup, PreparedA
 import { insertBeforeTurn } from '../../shared/fork'
 import { applyEvent, runningBackground, settle, type Item } from './state'
 import { ItemList } from './components/Cards'
+import { CwdContext } from './Markdown'
 import { TurnRail } from './components/TurnRail'
 import { jumpTurn } from './turns'
 import { Composer, type Effort, type Mode } from './components/Composer'
@@ -269,6 +270,11 @@ export function App() {
     setCompacting(s)
   }
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(''), 5000) }
+  useEffect(() => {
+    const on = (e: Event) => flash(String((e as CustomEvent).detail))
+    window.addEventListener('desk-toast', on)
+    return () => window.removeEventListener('desk-toast', on)
+  }, [])
   const overThreshold = !!current && compactCfg.mode !== 'off' && tokens > compactCfg.threshold
 
   const addFolder = async () => {
@@ -303,6 +309,7 @@ export function App() {
   )
 
   return (
+    <CwdContext.Provider value={cwd ?? ''}>
     <div className={`app ${sidebar ? '' : 'nosidebar'}${resizing ? ' resizing' : ''}`} style={{ gridTemplateColumns: `${sidebar ? sideW : 0}px minmax(0, 1fr)` }}>
       <div className="side-slot" aria-hidden={!sidebar} inert={!sidebar || undefined}>
         <Sidebar folders={folders} sessions={sessions} bookmarks={bookmarks} onCompact={openCompact} currentId={current?.id ?? null} busyIds={busyIds}
@@ -399,5 +406,6 @@ export function App() {
         ? <MemoryModal kind="folder" target={memEdit.cwd} memory={folderMemoryOf(memEdit.cwd)} onSave={(m) => void window.desk.setFolderMemory(memEdit.cwd, m)} onClose={() => setMemEdit(null)} />
         : <MemoryModal kind="session" target={current?.title ?? 'New chat'} memory={memory} onSave={(m) => void setMemory(m)} onClose={() => setMemEdit(null)} />)}
     </div>
+    </CwdContext.Provider>
   )
 }
