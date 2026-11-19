@@ -113,8 +113,7 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
         {tab === 'about' && <AboutTab onClose={onClose} />}
         {tab !== 'skills' && tab !== 'sync' && tab !== 'about' && (
           <div className="row-actions modal-foot">
-            <button onClick={testAll}>Test connection</button>
-            <span className="muted small">{health}</span>
+            {tab === 'providers' && <><button onClick={testAll}>Test connection</button><span className="muted small">{health}</span></>}
             <div className="spacer" />
             <button onClick={onClose}>Cancel</button>
             <button className="primary" onClick={async () => { await window.desk.saveSettings(s); onClose() }}>Save</button>

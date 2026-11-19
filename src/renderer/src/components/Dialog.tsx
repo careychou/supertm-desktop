@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react'
 import { useEscape } from '../hooks/useEscape'
 import { useExpand } from '../hooks/useExpand'
 
@@ -18,7 +18,7 @@ interface Props {
 const sizeKey = (id: string) => `size.${id}`
 
 /**
- * Shared frame for app dialogs: a header with expand and close buttons, a drag-to-resize corner whose size is
+ * Shared frame for app dialogs: a header with expand and close buttons, drag-to-resize edges and corners whose size is
  * remembered, Esc to close, and a backdrop click that only closes when the press also started on the backdrop
  * (so a resize or text-selection drag that ends outside the dialog does not close it).
  */
@@ -39,7 +39,7 @@ export function Dialog({ id, title, head, className = '', onClose, closable = tr
     } catch { /* ignore a bad saved size */ }
   }, [big, id])
 
-  // the resize corner writes an inline width/height; keep it for next time
+  // resizing writes an inline width/height; keep it for next time
   useEffect(() => {
     const el = ref.current
     if (!el || big) return
@@ -51,6 +51,23 @@ export function Dialog({ id, title, head, className = '', onClose, closable = tr
     window.addEventListener('mouseup', save)
     return () => { clearTimeout(t); ro.disconnect(); window.removeEventListener('mouseup', save) }
   }, [big, id])
+  // edges and corners resize the dialog; it stays centered, so it grows by twice the pointer movement
+  const startResize = (dir: string) => (e: ReactPointerEvent) => {
+    const el = ref.current
+    if (!el || big || e.button !== 0) return
+    e.preventDefault()
+    const x0 = e.clientX, y0 = e.clientY, w0 = el.offsetWidth, h0 = el.offsetHeight
+    const sx = dir.includes('e') ? 2 : dir.includes('w') ? -2 : 0
+    const sy = dir.includes('s') ? 2 : dir.includes('n') ? -2 : 0
+    const move = (ev: PointerEvent) => {
+      if (sx) el.style.width = `${Math.max(420, Math.min(window.innerWidth * 0.98, w0 + sx * (ev.clientX - x0)))}px`
+      if (sy) el.style.height = `${Math.max(220, Math.min(window.innerHeight * 0.96, h0 + sy * (ev.clientY - y0)))}px`
+    }
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); document.body.classList.remove('dialog-resizing') }
+    document.body.classList.add('dialog-resizing')
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
   const toggle = () => { localStorage.removeItem(sizeKey(id)); toggleBig() }
   const reset = () => {
     localStorage.removeItem(sizeKey(id))
@@ -64,6 +81,7 @@ export function Dialog({ id, title, head, className = '', onClose, closable = tr
       onMouseDown={(e) => { downOnBg.current = e.target === e.currentTarget }}
       onClick={(e) => { if (closable && downOnBg.current && e.target === e.currentTarget) onClose(); downOnBg.current = false }}
     >
+      <div className="dialog-frame">
       <div ref={ref} className={`modal resizable ${className}${big ? ' expanded' : ''}`} role="dialog" aria-modal="true">
         <div className="dialog-head">
           {head ?? <h2 className="dialog-title">{title}</h2>}
@@ -73,6 +91,8 @@ export function Dialog({ id, title, head, className = '', onClose, closable = tr
           </div>
         </div>
         {children}
+      </div>
+      {!big && ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map((d) => <div key={d} className={`dialog-grip ${d}`} onPointerDown={startResize(d)} aria-hidden="true" />)}
       </div>
     </div>
   )

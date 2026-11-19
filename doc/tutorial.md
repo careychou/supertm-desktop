@@ -296,7 +296,7 @@ Every dialog (Settings, AI usage, memory, share, compact, export, plugins) has t
 
 - **✕** (top right) closes it. **Esc** or a click outside also closes it; a drag that ends outside does not.
 - **⤢ / ⤡** expands it to fill the window and shrinks it back.
-- Drag the **bottom-right corner** to resize it. The size is remembered for that dialog; double-click ⤢ to go back to the default size.
+- Drag any **edge or corner** to resize it. The size is remembered for that dialog; double-click ⤢ to go back to the default size.
 
 ## 8. Which version am I running?
 

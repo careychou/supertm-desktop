@@ -560,9 +560,17 @@ button.danger { color: var(--fail); }
 .xl-status .dot.warn { background: #bf8700; }
 
 /* shared dialog frame (Dialog.tsx): header buttons, drag-to-resize corner */
-.modal.resizable { resize: both; min-width: 420px; min-height: 220px; max-width: 98vw; max-height: 96vh; display: flex; flex-direction: column; }
+.modal.resizable { min-width: 420px; min-height: 220px; max-width: 98vw; max-height: 96vh; display: flex; flex-direction: column; }
 .modal.resizable > * { flex-shrink: 0; }
-.modal.resizable.expanded { resize: none; }
+.dialog-frame { position: relative; display: flex; max-width: 98vw; max-height: 96vh; }
+.dialog-grip { position: absolute; z-index: 3; }
+.dialog-grip.n, .dialog-grip.s { left: 12px; right: 12px; height: 7px; cursor: ns-resize; }
+.dialog-grip.e, .dialog-grip.w { top: 12px; bottom: 12px; width: 7px; cursor: ew-resize; }
+.dialog-grip.n { top: 0; } .dialog-grip.s { bottom: 0; } .dialog-grip.e { right: 0; } .dialog-grip.w { left: 0; }
+.dialog-grip.ne, .dialog-grip.nw, .dialog-grip.se, .dialog-grip.sw { width: 16px; height: 16px; }
+.dialog-grip.ne { top: 0; right: 0; cursor: nesw-resize; } .dialog-grip.sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.dialog-grip.nw { top: 0; left: 0; cursor: nwse-resize; } .dialog-grip.se { bottom: 0; right: 0; cursor: nwse-resize; }
+body.dialog-resizing, body.dialog-resizing * { user-select: none; }
 .dialog-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .dialog-head .tabs { margin-bottom: 0; flex-wrap: wrap; flex: 1; min-width: 0; }
 .dialog-title { margin: 0; font-size: 18px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -583,3 +591,4 @@ button.danger { color: var(--fail); }
 @keyframes import-slide { 0% { left: -30%; } 100% { left: 100%; } }
 .import-done { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid #aceebb; background: #dafbe1; color: #116329; border-radius: 8px; font-size: 13.5px; }
 .import-done.none { border-color: var(--line); background: #f6f8fa; color: var(--text); }
+.modal.resizable > .modal-foot:last-child { margin-top: auto; }

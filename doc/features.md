@@ -38,7 +38,7 @@ Everything SuperTM Desktop does, in detail. New to the app? Start with the [tuto
 - **Bookmarks** — a pinned section at the top of the sidebar with nestable folders.
 - **Resizable sidebar** — drag its edge to resize (double-click resets), drag it past the minimum width or press **⌘B** to hide it, and use ◧ or ⌘B to show it again. The width and the hidden/shown state are remembered.
 - **About** — Settings → *About* (and the macOS app menu's *About*) shows the version, build commit and date, runtime versions and data folder, with **Copy version info**. Its **Updates** section lists every newer release from GitHub with its notes; **Download** fetches and verifies the macOS zip, and **Restart to install** replaces the app and reopens it. A quiet check after launch shows **⬆** next to ⚙ when a newer release exists.
-- **Resizable dialogs** — every dialog has a **✕** close button and a **⤢** button that fills most of the window, and can be resized by dragging its bottom-right corner. Each dialog remembers its size. Esc and a click outside still close it, but a drag that ends outside no longer does.
+- **Resizable dialogs** — every dialog has a **✕** close button and a **⤢** button that fills most of the window, and can be resized by dragging any edge or corner. Each dialog remembers its size. Esc and a click outside still close it, but a drag that ends outside no longer does.
 
 ## Attachments
 - **Paste, drop or 📎** — paste screenshots/files (⌘V), drag files anywhere onto the window, or pick them with 📎. Chips show the size before → after and estimated tokens.

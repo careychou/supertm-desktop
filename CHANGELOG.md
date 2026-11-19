@@ -1,5 +1,14 @@
 # Release notes
 
+## 1.2.14
+
+### Dialogs resize from any edge
+- Drag any edge or corner of a dialog to resize it, not just the bottom-right corner. Each dialog still remembers its size
+- When a dialog is taller than its content, the buttons stay at the bottom
+
+### Test connection only on Model providers
+- **Test connection** now shows only on Settings → Model providers, not on General, Excel or Memory compaction
+
 ## 1.2.13
 
 ### Import shows progress
