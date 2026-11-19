@@ -1,10 +1,10 @@
 # Release notes
 
+## 1.2.17
 
 ### Switching chats while one is running
 - A chat no longer goes blank when you switch to another chat before it finishes. Its reply, thinking, tool steps and any waiting permission or question now show when you switch back
 - Chats that already went blank are not restored by this fix
-## 1.2.17
 
 ### File links
 - A link to a file written as `computer:///path/to/file` now opens the file. Before, it showed as plain text you could not click, while the folder next to it was a link
