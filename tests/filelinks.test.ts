@@ -22,6 +22,7 @@ describe('chat file links', () => {
     expect(resolveLocal('out/recap%2011.18.2026.html', dir)).toBe(f)
     expect(resolveLocal(f, '/elsewhere')).toBe(f)
     expect(resolveLocal(pathToFileURL(f).href, '/elsewhere')).toBe(f)
+    expect(resolveLocal('computer://' + f.replace(/ /g, '%20'), '/elsewhere')).toBe(f)
     expect(resolveLocal('out/recap 11.18.2026.html#tab2', dir)).toBe(f)
     expect(resolveLocal('app.ts:12:3', dir)).toBe(path.join(dir, 'app.ts'))
     expect(resolveLocal('~/x.txt', dir)).toBe(path.join(os.homedir(), 'x.txt'))

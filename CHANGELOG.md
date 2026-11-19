@@ -2,6 +2,9 @@
 
 ## 1.2.17
 
+### File links
+- A link to a file written as `computer:///path/to/file` now opens the file. Before, it showed as plain text you could not click, while the folder next to it was a link
+
 ### One MS Office tab in Settings
 - **Settings → MS Office** replaces the separate **Excel** and **Word & PowerPoint** tabs
 - **Connect to Office** connects to Excel, Word and PowerPoint in one press, for whichever of them are open. Each app shows its own status line

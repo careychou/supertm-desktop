@@ -37,7 +37,7 @@ const md = new Marked({
 const fixSpacedLinks = (s: string) => s.replace(/\]\(((?:\/|~\/|\.\.?\/)[^()<>"'\n]* [^()<>"'\n]*)\)/g, (_m, p: string) => `](<${p.trim()}>)`)
 
 /** DOMPurify's default URI allow-list plus the app's own media scheme. */
-const URI_OK = /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|desk-media|file):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
+const URI_OK = /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|desk-media|file|computer):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
 
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') { node.setAttribute('target', '_blank'); node.setAttribute('rel', 'noreferrer') }
@@ -50,7 +50,7 @@ const HINT = 'Click to open · ⌘-click to show in Finder'
 const known = new Map<string, string | null>()
 const toast = (m: string) => window.dispatchEvent(new CustomEvent('desk-toast', { detail: m }))
 /** A link target that is a file on this Mac rather than a web address. */
-const localHref = (h: string) => /^file:/i.test(h) || !/^[a-z][a-z0-9+.\-]*:/i.test(h)
+const localHref = (h: string) => /^(file|computer):/i.test(h) || !/^[a-z][a-z0-9+.\-]*:/i.test(h)
 
 export function Markdown({ text }: { text: string }) {
   const cwd = useContext(CwdContext)
@@ -63,7 +63,7 @@ export function Markdown({ text }: { text: string }) {
     if (!root) return
     for (const a of root.querySelectorAll<HTMLAnchorElement>('a[href]')) {
       const h = a.getAttribute('href') ?? ''
-      if (!h.startsWith('#') && localHref(h)) { a.classList.add('file-link'); let shown = h; try { shown = decodeURIComponent(h) } catch { /* keep as written */ } a.title = `${shown}\n${HINT}` }
+      if (!h.startsWith('#') && localHref(h)) { a.classList.add('file-link'); let shown = h; try { shown = decodeURIComponent(h.replace(/^computer:\/\//i, '')) } catch { /* keep as written */ } a.title = `${shown}\n${HINT}` }
     }
     const els = [...root.querySelectorAll<HTMLElement>('a.path-maybe')]
     const key = (e: HTMLElement) => `${cwd}\n${e.dataset.path}`

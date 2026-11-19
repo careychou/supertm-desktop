@@ -11,9 +11,10 @@ const OPENABLE = new Set(['html', 'htm', 'pdf', 'md', 'markdown', 'txt', 'log', 
 
 const exists = (p: string) => { try { fs.statSync(p); return true } catch { return false } }
 
-/** Turns what a chat link holds (absolute, ~/, relative to the working folder, file:// URL, percent-encoded, with a :line or #anchor suffix) into an absolute path. Prefers a reading that exists on disk. */
+/** Turns what a chat link holds (absolute, ~/, relative to the working folder, file:// or computer:// URL, percent-encoded, with a :line or #anchor suffix) into an absolute path. Prefers a reading that exists on disk. */
 export function resolveLocal(raw: string, cwd: string): string {
   let p = raw.trim()
+  p = p.replace(/^computer:\/\/(?=\/)/i, 'file://')
   if (/^file:/i.test(p)) { try { p = fileURLToPath(p) } catch { p = p.replace(/^file:(\/\/)?/i, '') } }
   const forms = [p]
   try { const d = decodeURIComponent(p); if (d !== p) forms.push(d) } catch { /* not percent-encoded */ }
