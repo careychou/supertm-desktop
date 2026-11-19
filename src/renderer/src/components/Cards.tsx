@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Item } from '../state'
 import { Markdown } from '../Markdown'
 import { ExcelResult } from './ExcelViews'
+import { OfficeResult } from './OfficeViews'
 import { addr, blockRect, parseRef } from '../../../shared/excel'
 
 type ToolItem = Extract<Item, { t: 'tool' }>
@@ -16,6 +17,8 @@ const xlWhere = (a: Record<string, any>, range?: string) => {
   const r = String(range ?? ''), cell = !r ? '' : r.includes('!') || !a.sheet ? r : `${a.sheet}!${r}`
   return `${q(cell || (a.sheet ? `sheet ${a.sheet}` : 'the sheet'), 50)}${a.workbook ? ` in ${q(base(a.workbook), 40)}` : ''}`
 }
+
+const inDoc = (d: unknown) => (d ? ` in ${q(base(d), 40)}` : '')
 
 /** "G2:G40" for a block of rows starting at G2. */
 const xlBlock = (start: string, rows: unknown[]) => {
@@ -46,6 +49,18 @@ export function toolLabel(name: string, args: string): string {
     case 'excel_read': return `Read ${xlWhere(a, a.range)}`
     case 'excel_write': { const v = Array.isArray(a.values) ? a.values : []; const n = v.reduce((t: number, r: unknown) => t + (Array.isArray(r) ? r.length : 1), 0); return `Write ${n} cell${n === 1 ? '' : 's'} to ${xlWhere(a, xlBlock(a.start ?? 'A1', v))}` }
     case 'excel_format': return a.only_if ? `Format ${q(a.whole_row ? `rows of ${a.range}` : a.range, 40)} where ${q(a.only_if, 20)}${a.workbook ? ` in ${q(base(a.workbook), 40)}` : ''}` : `Format ${xlWhere(a, a.range)}`
+    case 'word_info': return a.document ? `Look at ${q(base(a.document), 60)}` : 'See what is open in Word'
+    case 'word_read': return `Read ${a.table ? `table ${a.table}` : a.paragraphs ? `paragraphs ${a.paragraphs}` : 'the document'}${inDoc(a.document)}`
+    case 'word_edit': return `${a.action === 'delete' ? 'Delete' : a.action === 'insert_after' ? 'Insert after' : 'Edit'} paragraph ${a.paragraph ?? ''}${inDoc(a.document)}`
+    case 'word_format': return `Format ${a.phrase ? `"${q(a.phrase, 30)}"` : `paragraph${String(a.paragraphs ?? '').includes('-') ? 's' : ''} ${a.paragraphs ?? ''}`}${inDoc(a.document)}`
+    case 'word_comment': return `Comment on paragraph ${a.paragraph ?? ''}${inDoc(a.document)}`
+    case 'word_table': return `${a.action === 'set' ? `Edit table ${a.table ?? ''}` : a.action === 'add_row' ? `Add a row to table ${a.table ?? ''}` : `Insert a table after paragraph ${a.after_paragraph ?? ''}`}${inDoc(a.document)}`
+    case 'powerpoint_info': return a.presentation ? `Look at ${q(base(a.presentation), 60)}` : 'See what is open in PowerPoint'
+    case 'powerpoint_read': return `Read ${a.slides ? `slide${String(a.slides).includes('-') ? 's' : ''} ${a.slides}` : 'the slides'}${inDoc(a.presentation)}`
+    case 'powerpoint_edit': return `Edit ${a.notes ? 'the notes of ' : ''}slide ${a.slide ?? ''}${a.shape ? `, shape ${a.shape}` : ''}${inDoc(a.presentation)}`
+    case 'powerpoint_format': return `Format slide ${a.slide ?? ''}, shape ${a.shape ?? ''}${inDoc(a.presentation)}`
+    case 'powerpoint_slide': return `${a.action === 'delete' ? `Delete slide ${a.slide ?? ''}` : `Add a slide${a.title ? `: ${q(a.title, 40)}` : ''}`}${inDoc(a.presentation)}`
+    case 'powerpoint_add': return `Add a ${a.values ? 'table' : 'text box'} to slide ${a.slide ?? ''}${inDoc(a.presentation)}`
     default: return name
   }
 }
@@ -60,6 +75,7 @@ function ToolDetail({ it }: { it: ToolItem }) {
     return <pre className="term"><span className="term-cmd">$ {cmd}</span>{it.output !== undefined ? `\n\n${it.output.trim()}` : ''}</pre>
   }
   if (it.name.startsWith('excel_')) return <ExcelResult name={it.name} args={a} output={it.output} ok={it.ok} />
+  if (it.name.startsWith('word_') || it.name.startsWith('powerpoint_')) return <OfficeResult args={a} output={it.output} ok={it.ok} />
   if (it.name === 'sql') return <><pre className="term"><span className="term-cmd">{a.query}</span></pre>{it.output !== undefined && <div className="tool-out"><Markdown text={it.output} /></div>}</>
   if (it.name === 'edit_file') return <><pre className="term diff"><span className="del">{String(a.old_str ?? '').split('\n').map((l) => `- ${l}`).join('\n')}</span>{'\n'}<span className="add">{String(a.new_str ?? '').split('\n').map((l) => `+ ${l}`).join('\n')}</span></pre>{it.ok === false && <pre className="term">{it.output}</pre>}</>
   if (it.name === 'write_file') return <><pre className="term">{String(a.content ?? '').slice(0, 20000)}</pre>{it.ok === false && <pre className="term">{it.output}</pre>}</>

@@ -2,6 +2,16 @@
 
 ## 1.2.16
 
+### Work with Word and PowerPoint without an add-in
+- The agent can now read and edit Word documents and PowerPoint presentations live, the same way it works with Excel: the file changes in the app while you watch, and nothing is saved until you save
+- **Word:** read the document, replace, insert or delete a paragraph, format text or apply a style, add review comments, and insert or edit tables
+- **PowerPoint:** read the slides, edit a bullet, a title or the speaker notes, format text, add or delete a slide, and add a text box or a table
+- Give a file path and the app opens the file for you; or just ask about the document or deck you have open
+- In Interactive chats each change shows a card with the text now and the text after, with **Apply**, **Apply all** and **Skip**
+- **Settings → Word & PowerPoint:** turn it on or off, check the connection, make Word edits arrive as **tracked changes** you accept or reject, and keep a backup of the last saved version before the first edit
+- If you edit the same paragraph while the agent is working, it makes no change and reads again instead of overwriting you
+- Not supported: pictures, charts, headers and footers, and reordering slides
+
 ### Group chats under a parent chat
 - Drag a chat onto the middle of another chat in the same working folder to file it under that chat. It is then listed there like a fork, and any chats already under it come along
 - Or use a chat's **⋯** menu → **Move under another chat…** and pick the parent from a list you can filter. Useful after an import leaves related chats scattered

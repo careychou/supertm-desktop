@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { AppInfo, ExcelStatus, ModelGroup, RegistryInfo, Settings } from '../../../shared/api'
+import { OFFICE_NAME, type OfficeApp, type OfficeStatus } from '../../../shared/office'
 import { bareModel } from '../../../shared/providers'
 import { BRAND } from '../../../shared/brand'
 import { ProvidersTab } from './ProvidersTab'
@@ -7,7 +8,7 @@ import { SyncTab } from './SyncTab'
 import { UpdatesPanel } from './UpdatesPanel'
 import { Dialog } from './Dialog'
 
-type Tab = 'providers' | 'general' | 'excel' | 'compaction' | 'skills' | 'sync' | 'about'
+type Tab = 'providers' | 'general' | 'excel' | 'office' | 'compaction' | 'skills' | 'sync' | 'about'
 
 export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: string; folders: string[]; onClose(): void; initialTab?: Tab }) {
   const [s, setS] = useState<Settings | null>(null)
@@ -26,7 +27,7 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
     setGroups(r.groups ?? [])
     setHealth(r.error ? `✗ ${r.error}` : `✓ ${r.models.length} models from ${r.groups.filter((g) => !g.error).length} provider(s)`)
   }
-  const tabs: Array<[Tab, string]> = [['providers', 'Model providers'], ['general', 'General'], ['excel', 'Excel'], ['compaction', 'Memory compaction'], ['skills', 'Skills & agents'], ['sync', 'Sync sessions'], ['about', 'About']]
+  const tabs: Array<[Tab, string]> = [['providers', 'Model providers'], ['general', 'General'], ['excel', 'Excel'], ['office', 'Word & PowerPoint'], ['compaction', 'Memory compaction'], ['skills', 'Skills & agents'], ['sync', 'Sync sessions'], ['about', 'About']]
   const compactKnown = !s.compactModel || groups.some((g) => g.models.includes(s.compactModel))
   return (
     <Dialog id="settings" className="settings" onClose={onClose} head={
@@ -73,6 +74,7 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
           </div>
         )}
         {tab === 'excel' && <ExcelTab s={s} setS={setS} />}
+        {tab === 'office' && <OfficeTab s={s} setS={setS} />}
         {tab === 'compaction' && (
           <div className="form">
             <div className="muted small">Compaction folds older turns into a summary so long chats stay fast and cheap. It rewrites the start of the conversation, so the provider's prompt cache (Claude: ~5 min) is rebuilt once on the next call. It pays off when you keep using the chat, so the defaults wait until the cache has gone cold anyway, unless the chat is very large.</div>
@@ -171,6 +173,59 @@ function ExcelTab({ s, setS }: { s: Settings; setS(s: Settings): void }) {
         </select>
       </label>
       <p className="muted small">Reading never asks. For a workbook open in Excel the backup is a copy of the last saved version, and a change made by the agent is not saved until you save it in Excel.</p>
+    </div>
+  )
+}
+
+function OfficeTab({ s, setS }: { s: Settings; setS(s: Settings): void }) {
+  const [st, setSt] = useState<OfficeStatus | null>(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { void window.desk.office.status(false).then(setSt) }, [])
+  const check = async () => { setBusy(true); try { setSt(await window.desk.office.status(true)) } finally { setBusy(false) } }
+  const line = (app: OfficeApp): [string, string] => {
+    const a = st?.[app], name = OFFICE_NAME[app], unit = app === 'word' ? 'document' : 'presentation', n = a?.docs.length ?? 0
+    return !a ? ['', 'Checking…']
+      : !a.installed ? ['', `${name} is not installed on this Mac.`]
+      : !a.running ? ['', `${name} is installed but not running. Open a ${unit}, or let the agent open a file by its path.`]
+      : a.permission === 'granted' ? ['ok', `Connected to ${name} · ${n ? `${n} ${unit}${n === 1 ? '' : 's'} open` : `no ${unit} open`}`]
+      : a.permission === 'needed' ? ['warn', `macOS has not allowed ${BRAND.title} to control ${name}. Turn it on in System Settings → Privacy & Security → Automation, then check again.`]
+      : a.error ? ['warn', a.error]
+      : ['', `${name} is running. Check the connection once: macOS will ask whether ${BRAND.title} may control ${name}.`]
+  }
+  const anyRunning = !!st && (st.word.running || st.powerpoint.running)
+  return (
+    <div className="form">
+      <p className="muted small">Lets the agent read and edit Word documents and PowerPoint presentations without an add-in. The file is edited in place in the app while you watch, and nothing is saved until you save it. Give the agent a file path and it opens the file for you.</p>
+      <label>Work with Word and PowerPoint
+        <select value={s.officeEnabled ? 'on' : 'off'} onChange={(e) => setS({ ...s, officeEnabled: e.target.value === 'on' })}>
+          <option value="on">On — the agent has the Word and PowerPoint tools</option>
+          <option value="off">Off</option>
+        </select>
+      </label>
+      <div className="sub-h">Connection</div>
+      {(['word', 'powerpoint'] as OfficeApp[]).map((app) => { const [tone, text] = line(app); return (
+        <div key={app} className="xl-status" role="status"><span className={`dot ${tone}`} /><span>{text}</span></div>
+      ) })}
+      <div className="xl-status"><button onClick={() => void check()} disabled={busy || !anyRunning}>{busy ? 'Checking…' : 'Check connection'}</button></div>
+      <label>Before changing a document or presentation
+        <select value={s.officeConfirm} onChange={(e) => setS({ ...s, officeConfirm: e.target.value as Settings['officeConfirm'] })}>
+          <option value="ask">Show the change and ask first (Interactive chats; Autopilot applies without asking)</option>
+          <option value="never">Apply without asking</option>
+        </select>
+      </label>
+      <label>Word: make edits as tracked changes
+        <select value={s.officeTrack ? 'on' : 'off'} onChange={(e) => setS({ ...s, officeTrack: e.target.value === 'on' })}>
+          <option value="off">Off — edits are made directly; undo with ⌘Z</option>
+          <option value="on">On — edits appear as suggestions you accept or reject in Word</option>
+        </select>
+      </label>
+      <label>Back up a file before the first edit
+        <select value={s.officeBackup ? 'on' : 'off'} onChange={(e) => setS({ ...s, officeBackup: e.target.value === 'on' })}>
+          <option value="on">On — saves name.backup.docx / .pptx next to the file</option>
+          <option value="off">Off</option>
+        </select>
+      </label>
+      <p className="muted small">Reading never asks. The backup is a copy of the last saved version. Tracked changes apply to Word only; PowerPoint has no equivalent. Pictures, charts, headers and footers, and reordering slides are not supported.</p>
     </div>
   )
 }

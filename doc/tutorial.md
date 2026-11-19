@@ -4,7 +4,7 @@ A short tour of SuperTM Desktop, from first launch to moving chats between Macs.
 
 1. [Add a working folder](#1-add-a-working-folder)
 2. [Connect a model provider](#2-connect-a-model-provider): [Vertex AI example](#example-a-google-cloud-vertex-ai), [Azure OpenAI example](#example-b-azure-openai-or-azure-ai-foundry)
-3. [Chat with the agent](#3-chat-with-the-agent), including [working with Excel](#work-with-excel)
+3. [Chat with the agent](#3-chat-with-the-agent), including [working with Excel](#work-with-excel) and [with Word and PowerPoint](#work-with-word-and-powerpoint)
 4. [Skills and agents per folder](#4-skills-and-agents-per-folder)
 5. [Keep long chats small: memory compaction](#5-keep-long-chats-small-memory-compaction)
 6. [See what you spend: AI usage](#6-see-what-you-spend-ai-usage)
@@ -215,6 +215,28 @@ The options are in **Settings → Excel**: turn the feature off, check the conne
 ![Settings → Excel](images/tutorial/09f-excel-settings.png)
 
 For how this works inside, see [Excel: how it works](excel.md).
+
+### Work with Word and PowerPoint
+
+SuperTM can also read and edit Word documents and PowerPoint presentations directly, with no add-in. The file is edited in place in Word or PowerPoint while you watch, and nothing is saved until you save it.
+
+**1. Open the document or presentation**, or give its path in your prompt (the app opens it for you). Put your cursor where you want the work done if you like; the agent can see which paragraph or slide you are on.
+
+**2. Ask in plain words.** For example: "Tighten the summary paragraph in Recap.docx", "Add a comment on the sales figure asking for the source", "Add a next-steps slide to the Q3 deck with these three bullets".
+
+**3. Review each change.** In an ✋ Interactive chat a card shows the text as it is now and the text after the change. Choose **Apply**, **Apply all Word and PowerPoint changes in this chat**, or **Skip**. A 🚀 Autopilot chat applies without asking.
+
+**4. Save in Word or PowerPoint when you are happy**, or undo with ⌘Z.
+
+Good to know:
+
+- **Tracked changes.** Settings → Word & PowerPoint can make Word edits arrive as tracked changes you accept or reject.
+- **Backup.** Before the first edit of a saved file, a copy of the last saved version is written next to it (`name.backup.docx` / `.pptx`).
+- **You can keep typing.** If you change the same paragraph while the agent is working, it notices, makes no change, and reads again.
+- **First use.** macOS asks once whether the app may control Word and PowerPoint. Check the connection in Settings → Word & PowerPoint.
+- **Not supported:** pictures, charts, headers and footers, and reordering slides.
+
+How it works inside: [office.md](office.md).
 
 ## 4. Skills and agents per folder
 

@@ -26,6 +26,7 @@ import { azureLogin, azureUsageProvider, cancelAzureLogin, getAzureUsage, getLoc
 import { registerPlugins } from './plugins'
 import { registerUpdates } from './updates'
 import { registerExcel } from './excel'
+import { registerOffice } from './office'
 import { existingPaths, linkAction, resolveLocal } from './filelinks'
 import { autoCompactDecision, estimateTokens, keepLastPlan, splitHistoryTurns, type CompactPlan } from '../engine/compact'
 
@@ -41,6 +42,9 @@ let plugins: ReturnType<typeof registerPlugins> | null = null
 // open permission/ask prompts; Stop resolves a session's prompts with `cancel` so the run can unwind
 // Excel tools: workbooks open in Excel (live) and .xlsx files
 let excel: ReturnType<typeof registerExcel> | null = null
+// Word and PowerPoint tools: documents and presentations open in the apps (live)
+let office: ReturnType<typeof registerOffice> | null = null
+// open permission/ask prompts; Stop resolves a session's prompts with `cancel` so the run can unwind
 const pending = new Map<string, { sid: string; kind: 'permission' | 'ask'; resolve: (v: any) => void; cancel: unknown; perm?: string }>()
 
 const push = (e: PushEvent) => win?.webContents.send('push', e)
@@ -71,7 +75,7 @@ function getLive(id: string): Session {
     adapter: adapter(), cwd: row.cwd, model: row.model, history: store.loadMessages(id),
     maxConcurrency: settings.maxConcurrency, maxTurnsMain: settings.maxTurnsMain, maxTurnsSub: settings.maxTurnsSub, reasoning: effortOf(row), memory: parseMemory(row.memories), folderMemory: folderMemoryOf(row.cwd),
     autoApprove: modeOf(row) === 'autopilot', stateDir: stateDirOf(id), compactModel: () => settings.compactModel,
-    extraTools: [...(plugins?.tools ?? []), ...(excel?.tools() ?? [])], extraPrompt: excel?.prompt() || undefined,
+    extraTools: [...(plugins?.tools ?? []), ...(excel?.tools() ?? []), ...(office?.tools() ?? [])], extraPrompt: [excel?.prompt(), office?.prompt()].filter(Boolean).join('\n\n') || undefined,
     hooks: {
       onEvent: (event) => {
         if (event.kind === 'usage') {
@@ -438,6 +442,7 @@ app.whenReady().then(() => {
   registerIpc()
   plugins = registerPlugins(ipcMain, { dataHome, push, folders: () => store.listFolders().map((f) => f.path) })
   excel = registerExcel(ipcMain, () => ({ enabled: settings.excelEnabled, confirm: settings.excelConfirm, backup: settings.excelBackup }))
+  office = registerOffice(ipcMain, () => ({ enabled: settings.officeEnabled, confirm: settings.officeConfirm, track: settings.officeTrack, backup: settings.officeBackup }))
   registerUpdates(ipcMain, { push, getToken: () => undefined }).checkInBackground()
   createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })

@@ -568,6 +568,19 @@ button.danger { color: var(--fail); }
 .xl-approve-cols { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 8px; }
 .xl-approve-cols .label { margin-bottom: 3px; }
 .xl-approve .prompt-actions button.primary { background: #107c41 !important; border-color: #107c41 !important; color: #fff; }
+.prompt-card.of-approve { border-color: #d0d7de; border-left: 3px solid #185abd; background: #fff; }
+.prompt-card.of-approve.powerpoint { border-left-color: #c43e1c; }
+.of-approve .prompt-title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.of-approve .prompt-actions button.primary { background: #185abd !important; border-color: #185abd !important; color: #fff; }
+.of-approve.powerpoint .prompt-actions button.primary { background: #c43e1c !important; border-color: #c43e1c !important; }
+.of-dot { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 3px; background: #185abd; color: #fff; font-size: 10px; font-weight: 700; }
+.of-dot.powerpoint { background: #c43e1c; }
+.of-change { margin-bottom: 8px; }
+.of-change .label { margin-bottom: 3px; }
+.of-text { font-size: 13px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; margin-bottom: 4px; max-height: 180px; overflow-y: auto; }
+.of-text.add { background: #dafbe1; border-color: #aceebb; color: #116329; }
+.of-text.del { background: #ffebe9; border-color: #ffcecb; color: #82071e; }
+.xl-status + .xl-status { margin-top: -6px; }
 .xl-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; margin: 2px 0 12px; }
 .xl-status .dot { width: 8px; height: 8px; border-radius: 50%; background: #8c959f; flex: none; }
 .xl-status .dot.ok { background: var(--ok); }

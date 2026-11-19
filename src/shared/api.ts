@@ -9,6 +9,7 @@ import type { ModelGroup, ProviderEntry } from './providers'
 import type { Attachment } from '../engine/content'
 import type { AttachMeta } from './attach'
 import type { ExcelStatus } from './excel'
+import type { OfficeStatus } from './office'
 import type { FolderConfig, MarketPlugin, PluginResult, PluginsStatus, PluginUpdates } from './plugins'
 
 export type { Attachment, AttachMeta }
@@ -128,6 +129,10 @@ export interface DeskApi {
   /** Marketplace plugins installed into a working folder's .github/. */
   plugins: PluginsApi
   excel: ExcelApi
+  office: {
+    /** Are Word and PowerPoint installed / running, and what is open. `probe` talks to the apps, which makes macOS ask for permission the first time. */
+    status(probe?: boolean): Promise<OfficeStatus>
+  }
 }
 
 export type { ExcelStatus }
