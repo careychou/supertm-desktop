@@ -3,7 +3,7 @@ import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { BRAND } from '../shared/brand'
 import type { Message } from '../engine/types'
-import { isWithin, reorderIds } from '../shared/fork'
+import { canNest, isWithin, orderRows, reorderIds, shownParent } from '../shared/fork'
 
 export interface UsageRec { ts: number; session_id: string; agent_id: string; model: string; prompt: number; cached: number; cache_write: number; completion: number }
 export interface SessionRow { id: string; title: string; cwd: string; model: string; created_at: number; updated_at: number; parent_id: string | null; fork_turn: number | null; reasoning?: string | null; mode?: string | null; memories?: string | null; sort_order?: number | null; compact_offset?: number | null; turn_map?: string | null }
@@ -72,6 +72,9 @@ export class Store {
   listSessions(): SessionRow[] {
     return this.db.prepare('SELECT * FROM sessions ORDER BY updated_at DESC LIMIT 1000').all() as unknown as SessionRow[]
   }
+  private listAllSessions(): SessionRow[] {
+    return this.db.prepare('SELECT * FROM sessions').all() as unknown as SessionRow[]
+  }
   getSession(id: string): SessionRow | undefined {
     return this.db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as unknown as SessionRow | undefined
   }
@@ -84,6 +87,22 @@ export class Store {
   setOrder(ids: string[]) {
     const st = this.db.prepare('UPDATE sessions SET sort_order = ? WHERE id = ?')
     ids.forEach((id, i) => st.run(i, id))
+  }
+  /**
+   * Files a chat under `parent` (null = top of its working folder); its own children come along. With `targetId` it is placed
+   * before/after that sibling, otherwise it is listed first. Refuses another folder's chat and a chat's own subtree.
+   * A chat that changes parent stops claiming a fork turn, since it was not forked from the new parent.
+   */
+  placeSession(id: string, parent: string | null, targetId: string | null = null, before = false): boolean {
+    const all = this.listAllSessions()
+    const row = all.find((s) => s.id === id)
+    if (!row || !canNest(all, id, parent)) return false
+    if (shownParent(all, id) !== parent || (row.parent_id ?? null) !== parent) this.db.prepare('UPDATE sessions SET parent_id = ?, fork_turn = NULL WHERE id = ?').run(parent, id)
+    if (!targetId) { this.db.prepare('UPDATE sessions SET sort_order = NULL WHERE id = ?').run(id); return true }
+    const after = this.listAllSessions()
+    const sibs = orderRows(after.filter((s) => s.cwd === row.cwd && s.id !== id && shownParent(after, s.id) === parent))
+    this.setOrder(reorderIds(sibs.map((s) => s.id), id, targetId, before))
+    return true
   }
 
   listBookmarks(): BookmarkRow[] {

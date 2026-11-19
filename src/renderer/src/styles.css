@@ -434,6 +434,15 @@ button.danger { color: var(--fail); }
 .sync-table tr.sync-group td { background: #f6f8fa; font-weight: 600; font-size: 12.5px; padding: 5px 6px; }
 .sync-empty { padding: 10px; }
 .modal.sync-dialog { width: min(720px, 90vw); }
+.modal.move { width: min(560px, 90vw); }
+.modal.move .sync-filter { width: 100%; box-sizing: border-box; margin: 10px 0; }
+.modal.move .move-list { max-height: 46vh; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 4px; flex: 1 1 auto; min-height: 80px; }
+.modal.move .move-row { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; border-radius: 6px; background: none; text-align: left; padding: 6px 8px; font-size: 13.5px; }
+.modal.move .move-row:hover:not(:disabled) { background: var(--hover); }
+.modal.move .move-row:disabled { color: var(--muted); cursor: default; }
+.modal.move .move-row .title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.modal.move .move-row .mark { width: 14px; flex: none; text-align: center; color: #8c959f; }
+.modal.resizable[style*="height"] .move-list { max-height: none; }
 .sync-dialog h3 { margin: 0 0 6px; }
 .sync-scroll.tree { font-size: 13.5px; }
 .tree-row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px 6px 8px; border-bottom: 1px solid #f0f2f4; }

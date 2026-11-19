@@ -48,6 +48,8 @@ export interface DeskApi {
   openSession(id: string): Promise<{ session: SessionRow; items: unknown[]; busy: boolean; tokens: number }>
   renameSession(id: string, title: string): Promise<void>
   reorderSession(id: string, targetId: string, before: boolean): Promise<void>
+  /** Files a chat under another chat of the same folder (null = top level), optionally before/after a sibling. False when refused. */
+  moveSession(id: string, parentId: string | null, targetId?: string | null, before?: boolean): Promise<boolean>
   pinSession(sessionId: string, parentId: string | null, targetId?: string | null, before?: boolean): Promise<void>
   placeBookmark(id: string, parentId: string | null, targetId: string | null, before: boolean): Promise<void>
   addBookmarkFolder(name: string, parentId: string | null): Promise<void>

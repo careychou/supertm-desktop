@@ -75,6 +75,24 @@ export function isWithin<T extends { id: string; parent_id: string | null }>(row
   return false
 }
 
+type Nestable = { id: string; parent_id: string | null; cwd: string }
+
+/** The parent a chat is drawn under: its parent_id when that chat exists in the same working folder, else null (top of the folder). */
+export function shownParent<T extends Nestable>(rows: T[], id: string): string | null {
+  const r = rows.find((x) => x.id === id)
+  const p = r?.parent_id ? rows.find((x) => x.id === r.parent_id) : undefined
+  return r && p && p.cwd === r.cwd ? p.id : null
+}
+
+/** Whether chat `id` may be filed under `parent` (null = top of its folder): same working folder, and not under itself or one of its own children. */
+export function canNest<T extends Nestable>(rows: T[], id: string, parent: string | null): boolean {
+  const r = rows.find((x) => x.id === id)
+  if (!r) return false
+  if (parent === null) return true
+  const p = rows.find((x) => x.id === parent)
+  return !!p && p.cwd === r.cwd && !isWithin(rows, id, parent)
+}
+
 export interface TreeNode<T> { row: T; children: TreeNode<T>[] }
 
 /** Builds a forest from rows with id/parent_id (siblings in display order); orphans (missing parent) become roots. */

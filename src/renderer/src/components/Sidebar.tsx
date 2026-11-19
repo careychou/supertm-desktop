@@ -1,7 +1,8 @@
 import { UsageRing, fmtUsd } from './UsageModal'
 import { useRef, useState } from 'react'
 import type { BookmarkRow, FolderRow, SessionRow } from '../../../shared/api'
-import { buildTree, isWithin, type TreeNode } from '../../../shared/fork'
+import { buildTree, canNest, isWithin, shownParent, type TreeNode } from '../../../shared/fork'
+import { MoveModal } from './MoveModal'
 import { Menu, at, type MenuEntry, type MenuState } from './Menu'
 import { BRAND } from '../../../shared/brand'
 import { hasMemory, parseMemory } from '../../../shared/memory'
@@ -44,6 +45,8 @@ type Ctx = Props & {
   drag: React.MutableRefObject<Drag | null>
   over: { key: string; zone: Zone } | null
   setOver(o: { key: string; zone: Zone } | null): void
+  /** Opens the "Move under another chat" picker. */
+  setMoving(s: SessionRow | null): void
 }
 
 /** Where on a row the pointer is: top/bottom half, or (for containers) top quarter / middle / bottom quarter. */
@@ -109,11 +112,16 @@ function folderTargets(bms: BookmarkRow[], exclude?: string): Array<{ id: string
 
 function sessionMenu(s: SessionRow, c: Ctx, extra: MenuEntry[] = []): MenuEntry[] {
   const pinned = c.bookmarks.some((b) => b.kind === 'pin' && b.session_id === s.id)
+  const move: MenuEntry[] = [
+    ...(c.sessions.some((x) => x.id !== s.id && canNest(c.sessions, s.id, x.id)) ? [{ label: '⑂ Move under another chat…', onClick: () => c.setMoving(s) }] : []),
+    ...(shownParent(c.sessions, s.id) ? [{ label: '⇤ Move to top level', onClick: () => void window.desk.moveSession(s.id, null) }] : [])
+  ]
   return [
     { label: '✎ Rename', onClick: () => c.setEditing(`s:${s.id}`) },
     pinned ? { label: '★ Pinned', onClick: () => {}, disabled: true } : { label: '☆ Pin to Bookmarks', onClick: () => window.desk.pinSession(s.id, null) },
     ...folderTargets(c.bookmarks).slice(1).filter(() => !pinned).map((f) => ({ label: `☆ Pin to ${f.label.trim()}`, onClick: () => window.desk.pinSession(s.id, f.id) })),
     ...extra,
+    ...(move.length ? ['sep' as const, ...move] : []),
     'sep',
     { label: '⇪ Share / export…', onClick: () => c.onShare(s) },
     { label: '⇲ Compact history…', onClick: () => c.onCompact(s) },
@@ -131,9 +139,15 @@ function SessionNode({ node, depth, c }: { node: TreeNode<SessionRow>; depth: nu
     (dr, z) => {
       if (dr.kind !== 'session' || dr.id === s.id) return null
       const o = c.sessions.find((x) => x.id === dr.id)
-      return o && o.cwd === s.cwd && (o.parent_id ?? null) === (s.parent_id ?? null) ? z : null
+      if (!o || o.cwd !== s.cwd) return null
+      // Middle of a row: file the dragged chat under this one. Top or bottom edge: place it beside this one, at this one's level.
+      if (z === 'into') return canNest(c.sessions, dr.id, s.id) && shownParent(c.sessions, dr.id) !== s.id ? z : null
+      return canNest(c.sessions, dr.id, shownParent(c.sessions, s.id)) ? z : null
     },
-    (dr, z) => window.desk.reorderSession(dr.id, s.id, z === 'before'))
+    (dr, z) => {
+      if (z === 'into') { setOpen(true); void window.desk.moveSession(dr.id, s.id) }
+      else void window.desk.moveSession(dr.id, shownParent(c.sessions, s.id), s.id, z === 'before')
+    }, true)
   return (
     <>
       <div className={`session ${c.currentId === s.id ? 'on' : ''}${d.cls}`} {...d.props} style={{ paddingLeft: 12 + depth * 18 }} onClick={() => c.onOpen(s.id)}
@@ -235,9 +249,13 @@ function FolderGroup({ folder, sessions, c }: { folder: FolderRow; sessions: Ses
     'sep',
     { label: '× Remove folder', danger: true, onClick: () => c.onRemoveFolder(folder.path) }
   ]))
+  // Dropping a nested chat on its folder moves it back to the top level.
+  const d = dnd(c, `f:${folder.path}`, { kind: 'session', id: '' },
+    (dr) => (dr.kind === 'session' && sessions.some((x) => x.id === dr.id) && shownParent(c.sessions, dr.id) ? 'into' : null),
+    (dr) => { setOpen(true); void window.desk.moveSession(dr.id, null) }, true)
   return (
     <div className="folder-group">
-      <div className="folder-row" onClick={() => setOpen(!open)} onContextMenu={menu} title={folder.path}>
+      <div className={`folder-row${d.cls}`} onDragOver={d.props.onDragOver} onDragLeave={d.props.onDragLeave} onDrop={d.props.onDrop} onClick={() => setOpen(!open)} onContextMenu={menu} title={folder.path}>
         <span className="folder-icon">{open ? '📂' : '📁'}</span>
         <span className="title">{base(folder.path)}</span>
         {c.pluginUpdates?.has(folder.path) && <button className="tm-badge" title="Plugin updates available. Click to review." onClick={(e) => { e.stopPropagation(); c.onPlugins?.(folder.path) }}>⬆</button>}
@@ -258,7 +276,8 @@ export function Sidebar(p: Props) {
   const [bmOpen, setBmOpen] = useState(true)
   const drag = useRef<Drag | null>(null)
   const [over, setOver] = useState<{ key: string; zone: Zone } | null>(null)
-  const c: Ctx = { ...p, setMenu, editing, setEditing, drag, over, setOver }
+  const [moving, setMoving] = useState<SessionRow | null>(null)
+  const c: Ctx = { ...p, setMenu, editing, setEditing, drag, over, setOver, setMoving }
   const bmRoot = dnd(c, 'bm-root', { kind: 'bookmark', id: '' }, () => 'into', (dr) => {
     setBmOpen(true)
     if (dr.kind === 'session') void window.desk.pinSession(dr.id, null, null, false)
@@ -298,6 +317,7 @@ export function Sidebar(p: Props) {
         <button className="icon" title="Settings" onClick={p.onSettings}>⚙</button>
       </div>
       {menu && <Menu menu={menu} onClose={() => setMenu(null)} />}
+      {moving && <MoveModal session={moving} sessions={p.sessions} onClose={() => setMoving(null)} />}
     </aside>
   )
 }

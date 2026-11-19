@@ -11,6 +11,7 @@ const api: DeskApi = {
   openSession: inv('openSession') as any,
   renameSession: inv('renameSession') as any,
   reorderSession: inv('reorderSession') as any,
+  moveSession: inv('moveSession') as any,
   placeBookmark: inv('placeBookmark') as any,
   pinSession: inv('pinSession') as any,
   addBookmarkFolder: inv('addBookmarkFolder') as any,

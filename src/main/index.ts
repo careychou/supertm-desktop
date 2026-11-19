@@ -229,6 +229,11 @@ function registerIpc() {
     const sibs = orderRows(store.listSessions().filter((s) => s.cwd === row.cwd && (s.parent_id ?? null) === (row.parent_id ?? null)))
     store.setOrder(reorderIds(sibs.map((s) => s.id), id, targetId, before)); pushSessions()
   })
+  ipcMain.handle('moveSession', (_e, id: string, parentId: string | null, targetId: string | null = null, before = false) => {
+    const ok = store.placeSession(id, parentId, targetId, before)
+    if (ok) pushSessions()
+    return ok
+  })
   ipcMain.handle('pinSession', (_e, sessionId: string, parentId: string | null, targetId: string | null = null, before = false) => {
     let pid = store.pinId(sessionId)
     if (!pid) { pid = randomUUID(); store.addBookmark({ id: pid, kind: 'pin', name: null, session_id: sessionId, parent_id: parentId }) }

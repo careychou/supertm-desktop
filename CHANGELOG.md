@@ -1,5 +1,15 @@
 # Release notes
 
+## 1.2.16
+
+### Group chats under a parent chat
+- Drag a chat onto the middle of another chat in the same working folder to file it under that chat. It is then listed there like a fork, and any chats already under it come along
+- Or use a chat's **⋯** menu → **Move under another chat…** and pick the parent from a list you can filter. Useful after an import leaves related chats scattered
+- To take a chat back out, drop it on its folder's name, drop it on the top or bottom edge of a top-level chat, or choose **Move to top level** in its ⋯ menu
+- Dragging to the top or bottom edge of a chat still reorders; it now also works between levels
+- Moving only changes where a chat is listed. The conversations themselves are untouched, and a chat cannot be moved to another working folder or under one of its own children
+- A fork that is moved under a different chat no longer shows "forked at turn N", since it was not forked from its new parent
+
 ## 1.2.15
 
 ### Files and links you can click
