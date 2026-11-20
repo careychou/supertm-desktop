@@ -3,6 +3,7 @@ import { SessionTree, type TreeRow } from './SessionTree'
 import { ageDiff, type ImportSource, type SyncCandidate, type SyncChoice, type SyncManifest } from '../../../shared/sync'
 import { BRAND } from '../../../shared/brand'
 import { Dialog } from './Dialog'
+import { Busy, ProgressBar } from './Progress'
 
 const KEY = 'syncDir'
 const when = (t: number) => new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
@@ -19,21 +20,6 @@ const SOURCES: Array<{ kind: ImportSource; label: string; hint: string }> = [
 ]
 
 type Row = TreeRow
-
-/** Determinate bar when the main process reports done / total; an indeterminate one until then. */
-function ProgressBar({ label, prog }: { label: string; prog: { done: number; total: number } | null }) {
-  const known = prog && prog.total > 0
-  const pct = known ? Math.round((prog.done / prog.total) * 100) : 0
-  return (
-    <div className="import-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={known ? pct : undefined} aria-label={label}>
-      <div className="import-progress-label">
-        <span>{label}</span>
-        {known && <span className="muted small">{prog.done} of {prog.total} · {pct}%</span>}
-      </div>
-      <div className={`import-progress-track${known ? '' : ' indeterminate'}`}><div className="import-progress-fill" style={known ? { width: `${pct}%` } : undefined} /></div>
-    </div>
-  )
-}
 
 /** Export step 2: after the destination is chosen, pick the chats to write. */
 function ExportDialog({ dir, onClose, onDone }: { dir: string; onClose(): void; onDone(msg: string): void }) {
@@ -58,12 +44,13 @@ function ExportDialog({ dir, onClose, onDone }: { dir: string; onClose(): void; 
   return (
     <Dialog id="export" className="sync-dialog" title="Export sessions" onClose={onClose} closable={!busy}>
         <div className="muted small">To <b title={dir}>{dir}</b>. This replaces an earlier export in that folder. Every session is selected; uncheck the ones to leave out.</div>
-        {rows ? <SessionTree rows={rows} picked={picked} setPicked={setPicked} /> : <div className="muted">Loading…</div>}
+        {rows ? <SessionTree rows={rows} picked={picked} setPicked={setPicked} /> : <div className="working"><span className="spinner" /> Loading sessions…</div>}
+        {busy && <ProgressBar label={`Exporting ${plural(picked.size, 'session')} to ${base(dir)}…`} hint="Copying the chats and their files. Keep this window open." />}
         <div className="row-actions modal-foot">
           <span className="muted small">{err}</span>
           <div className="spacer" />
-          <button onClick={onClose}>Cancel</button>
-          <button className="primary" disabled={busy || picked.size === 0} onClick={go}>{busy ? 'Exporting…' : `Export ${plural(picked.size, 'session')}`}</button>
+          <button onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="primary" disabled={busy || picked.size === 0} onClick={go}>{busy ? <Busy text="Exporting…" /> : `Export ${plural(picked.size, 'session')}`}</button>
         </div>
     </Dialog>
   )
@@ -169,7 +156,7 @@ export function SyncTab() {
           </button>
         ))}
       </div>
-      {busy && <ProgressBar label={busy} prog={prog} />}
+      {busy && busy !== 'Importing…' && <ProgressBar label={busy} prog={prog} />}
       {!busy && msg && <div className="muted small">{msg}</div>}
 
       {result && !busy && (
@@ -213,9 +200,10 @@ export function SyncTab() {
           </label>
           <div className="muted small">Only the chats are imported. They go under this folder{srcFolders.length === 1 ? <> instead of <b title={srcFolders[0]}>{srcFolders[0]}</b></> : srcFolders.length > 1 ? ' instead of their original folders' : ''}, so no second folder with the same name is added.{owned && conflicts.length > 0 ? ' Overwritten or forked chats stay in their current folder.' : ''}</div>
         </div>}
+        {busy === 'Importing…' && <ProgressBar label={`Importing ${plural(picked.size, 'chat')}…`} prog={prog} hint="Keep this window open until it finishes." />}
         <div className="row-actions">
           <div className="spacer" />
-          <button className="primary" disabled={!!busy || picked.size === 0 || (needsDest && !dest)} onClick={doImport}>{busy === 'Importing…' ? 'Importing…' : `Import ${picked.size || ''} selected`}</button>
+          <button className="primary" disabled={!!busy || picked.size === 0 || (needsDest && !dest)} onClick={doImport}>{busy === 'Importing…' ? <Busy text="Importing…" /> : `Import ${picked.size || ''} selected`}</button>
         </div>
       </>}
 

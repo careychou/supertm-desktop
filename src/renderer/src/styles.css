@@ -112,6 +112,35 @@ pre, code { font-family: "SF Mono", Menlo, monospace; font-size: 12.5px; }
 .turn-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .opts { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; margin-bottom: 12px; }
 .opts label { display: flex; gap: 8px; align-items: center; }
+.skill-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px; font-size: 13.5px; }
+.skill-form > label { display: flex; flex-direction: column; gap: 4px; }
+.skill-form input:not([type]) { padding: 6px 9px; border: 1px solid #d0d7de; border-radius: 6px; font: inherit; }
+.skill-name { display: flex; align-items: center; gap: 4px; }
+.skill-name input { flex: 1; }
+.skill-md { width: 100%; min-height: 300px; box-sizing: border-box; font: 12.5px/1.5 ui-monospace, Menlo, monospace; padding: 10px; border: 1px solid #d0d7de; border-radius: 6px; resize: vertical; }
+.skill-review-head { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.skill-pack { display: grid; grid-template-columns: 240px 1fr; gap: 10px; min-height: 300px; }
+.skill-tree { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--line); border-radius: 6px; padding: 6px; overflow: auto; max-height: 420px; }
+.tree-dir { font-size: 12.5px; padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.skill-tree .d1 { padding-left: 18px; }
+.skill-tree .d2 { padding-left: 30px; }
+.skill-file.bad code { color: #a40e26; }
+.skill-tree .skill-file button { text-align: left; background: none; border: 0; box-shadow: none; padding: 3px 6px; border-radius: 4px; cursor: pointer; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; height: auto; }
+.skill-tree > *, .skill-tree [role=group] > * { flex: 0 0 auto; }
+.skill-file:hover { background: var(--hover); }
+.skill-file.on { background: var(--hover); box-shadow: inset 2px 0 0 var(--accent, #0969da); }
+.tree-icon { width: 16px; text-align: center; font-size: 12px; }
+.skill-file { display: flex; align-items: center; gap: 2px; border-radius: 4px; }
+.skill-file.off code { text-decoration: line-through; color: var(--muted); }
+.skill-tree > .link { text-align: left; padding: 6px 6px 6px 18px; font-size: 12.5px; }
+.skill-editor { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.skill-file-bar { display: flex; align-items: center; gap: 8px; }
+.skill-file-bar input { font: 12.5px ui-monospace, Menlo, monospace; padding: 4px 8px; border: 1px solid #d0d7de; border-radius: 6px; width: 220px; }
+.import-progress .spinner { vertical-align: -2px; margin-right: 4px; }
+.share .small { font-size: 12px; margin: 0; }
+.share .actions button:disabled { opacity: .45; cursor: default; }
+.share .warn { font-size: 13px; background: #fff8e5; border-radius: 6px; padding: 8px 10px; margin-bottom: 12px; }
+.share .error { font-size: 13px; background: #fdecec; color: #a40e26; border-radius: 6px; padding: 8px 10px; margin-bottom: 12px; }
 .saved { font-size: 13px; background: #eef7ee; border-radius: 6px; padding: 8px 10px; margin-bottom: 12px; word-break: break-all; }
 .modal button.link { border: 0; color: var(--blue); padding: 0 4px; background: none; }
 .actions { display: flex; justify-content: flex-end; gap: 8px; }

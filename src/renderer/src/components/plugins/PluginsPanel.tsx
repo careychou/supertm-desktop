@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PushEvent } from '../../../../shared/api'
 import type { FolderConfig, MarketPlugin, MarketplaceRef, PluginsStatus } from '../../../../shared/plugins'
 import { BRAND } from '../../../../shared/brand'
+import { Busy, ProgressBar } from '../Progress'
 
 /** Browse a folder's marketplaces and install/remove plugins. */
 export function PluginBrowser({ folder, onManage, onChanged }: { folder: string; onManage?(): void; onChanged?(): void }) {
@@ -28,15 +29,16 @@ export function PluginBrowser({ folder, onManage, onChanged }: { folder: string;
   }, [folder])
   useEffect(() => { logEl.current?.scrollTo(0, logEl.current.scrollHeight) }, [log])
 
+  const [doing, setDoing] = useState('')
   const act = async (p: MarketPlugin) => {
-    setWorking(p.name); setMsg(null); setLog([])
+    setDoing(`${p.installed ? 'Removing' : 'Installing'} ${p.name}…`); setWorking(p.name); setMsg(null); setLog([])
     const r = p.installed ? await window.desk.plugins.uninstall(folder, p.name) : await window.desk.plugins.install(folder, p.name, p.marketplace)
     setWorking('')
     setMsg({ ok: r.ok, text: r.ok && !p.installed ? `${r.message} Start a new chat in this folder to use it.` : r.message })
     await load(); onChanged?.()
   }
   const updateAll = async () => {
-    setWorking('*'); setMsg(null); setLog([])
+    setDoing('Updating plugins…'); setWorking('*'); setMsg(null); setLog([])
     const r = await window.desk.plugins.updateAll(folder)
     setWorking(''); setMsg({ ok: r.ok, text: r.message }); await load(); onChanged?.()
   }
@@ -60,12 +62,13 @@ export function PluginBrowser({ folder, onManage, onChanged }: { folder: string;
         </div>
       ) : (
         <>
-          {updates.size > 0 && <div className="tm-update">⬆ Updates available: {[...updates].join(', ')} <button disabled={!!working} onClick={() => void updateAll()}>Update all</button></div>}
+          {updates.size > 0 && <div className="tm-update">⬆ Updates available: {[...updates].join(', ')} <button disabled={!!working} onClick={() => void updateAll()}>{working === '*' ? <Busy text="Updating…" /> : 'Update all'}</button></div>}
           {errors.map((e) => <div key={e} className="err">{e}</div>)}
           {msg && <div className={msg.ok ? 'saved' : 'err'}>{msg.text}</div>}
+          {working && <ProgressBar label={doing} hint={log.length ? log[log.length - 1] : undefined} />}
           {working && log.length > 0 && <pre ref={logEl} className="tm-log">{log.join('\n')}</pre>}
           {list && list.length > 8 && <input className="pl-search" placeholder={`Search ${list.length} plugins…`} value={q} onChange={(e) => setQ(e.target.value)} />}
-          {!list ? <div className="muted"><span className="spinner" /> Loading marketplace…</div> : (
+          {!list ? <ProgressBar label="Loading marketplace…" /> : (
             <div className="tm-plugins">
               {shown.length === 0 && <div className="tm-plugin muted">No plugins found.</div>}
               {shown.map((p) => (
@@ -78,7 +81,7 @@ export function PluginBrowser({ folder, onManage, onChanged }: { folder: string;
                   {p.managed
                     ? <span className="muted small">{p.managed}</span>
                     : <button disabled={!!working || st?.busy} className={p.installed ? '' : 'primary'} onClick={() => void act(p)}>
-                        {working === p.name ? <><span className="spinner" /> Working…</> : p.installed ? 'Remove' : 'Install'}</button>}
+                        {working === p.name ? <Busy text={p.installed ? 'Removing…' : 'Installing…'} /> : p.installed ? 'Remove' : 'Install'}</button>}
                 </div>
               ))}
             </div>

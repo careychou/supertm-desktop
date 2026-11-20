@@ -1,5 +1,21 @@
 # Release notes
 
+## 1.4.0
+
+### Export a chat as a skill
+- Share session now has a **Skill** option next to Markdown. It turns the chat (or the turns you pick) into a ready-to-use skill pack: `SKILL.md` plus the scripts and files the chat used, under `scripts/` and `assets/`
+- Name the skill yourself and choose where it goes: this folder's `.github/skills` or your personal `~/.copilot/skills`. An existing skill is never overwritten
+- **Generate & review** drafts `SKILL.md` with the Memory compaction model, including a Requirements section. Nothing is saved until you click **Save skill**
+- The review shows the pack as a folder tree. Click any file to view and edit it; edits change only the skill's copy, not your original files. You can rename, untick or add files (**+ Add files…**)
+- Scripts the chat ran or wrote are found automatically, including in chats imported from Copilot or Claude and scripts run after a `cd`. Longer inline scripts (`python3 - <<EOF`) can be saved as files too
+- Temp files (`/tmp` and similar) and inline snippets start unticked and hidden behind "Show N more…", so only real project files are included by default
+- Before saving, the pack is scanned for secrets (tokens, keys, passwords) and you are warned before anything is written
+- New skills show up in new chats
+
+### Progress for long actions
+- Import, export, memory compaction (analyze and compact), plugin install/remove/update and skill generate/save now show a working bar with elapsed time, or a real progress bar when the count is known (for example, sessions imported or turns compacted)
+- Dialogs can't be closed by accident while one of these is running
+
 ## 1.3.0
 
 ### Settings changes reach open chats

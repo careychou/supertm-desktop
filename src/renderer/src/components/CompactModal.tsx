@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Dialog } from './Dialog'
+import { Busy, ProgressBar } from './Progress'
 import type { SessionRow, TurnAnalysis } from '../../../shared/api'
 
 interface Props {
@@ -85,7 +86,7 @@ export function CompactModal({ session, keepRecentDefault, onClose, onDone }: Pr
     <Dialog id="compact" className="share compact" title="Compact history" onClose={onClose} closable={!working}>
         <p className="muted">Shrink what the agent carries forward. The chat view keeps every turn either way.</p>
         {err && <div className="err">{err}</div>}
-        {!a && !err && <div className="working"><span className="spinner" /> Reading turns and finding related ones…</div>}
+        {!a && !err && <ProgressBar label="Reading turns and finding related ones…" />}
         {a && (
           <>
             <div className="compact-top">
@@ -153,9 +154,10 @@ export function CompactModal({ session, keepRecentDefault, onClose, onDone }: Pr
             {nothing && <p className="muted hint">Nothing to compact: every turn is set to Keep.{mode === 'last' && n > 0 ? ' Lower the number, or choose turns.' : ''}</p>}
           </>
         )}
+        {working && <ProgressBar label={`Compacting: summarizing ${by.summarize.length} turn${by.summarize.length === 1 ? '' : 's'}${by.drop.length ? `, dropping ${by.drop.length}` : ''}…`} hint="The memory-compaction model is writing the summary. Long chats can take a minute or two." />}
         <div className="actions">
           <button onClick={onClose} disabled={working}>Cancel</button>
-          <button className="primary" onClick={go} disabled={!a || working || nothing}>{working ? 'Compacting…' : 'Compact'}</button>
+          <button className="primary" onClick={go} disabled={!a || working || nothing}>{working ? <Busy text="Compacting…" /> : 'Compact'}</button>
         </div>
     </Dialog>
   )

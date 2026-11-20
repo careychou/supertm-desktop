@@ -5,6 +5,8 @@ import type { SessionRow, FolderRow, BookmarkRow } from '../main/store'
 import type { Memory } from './memory'
 import type { ExternalSource, SyncCandidate, SyncChoice, SyncImportResult, SyncManifest } from './sync'
 import type { Settings } from '../main/settings'
+import type { SkillDraft, SkillFileDraft, SkillFileOut } from '../main/skill-export'
+import type { SecretFinding } from './skill-export'
 import type { ModelGroup, ProviderEntry } from './providers'
 import type { Attachment } from '../engine/content'
 import type { AttachMeta } from './attach'
@@ -16,6 +18,7 @@ export type { Attachment, AttachMeta }
 export interface AttachInput { path?: string; name?: string; data?: Uint8Array }
 export interface PreparedAttachment { id: string; att?: Attachment; meta: AttachMeta; error?: string }
 export type { Memory }
+export type { SkillDraft, SkillFileDraft, SkillFileOut, SecretFinding }
 export type { AgentEvent, SessionRow, FolderRow, BookmarkRow, Settings, PermissionDecision, ModelGroup, ProviderEntry }
 export interface Listing { sessions: SessionRow[]; folders: FolderRow[]; bookmarks: BookmarkRow[] }
 export interface CompactItem { t: 'compact'; auto: boolean; model?: string; summarized: number; dropped: number; before: number; after: number; summary: string; keptTurns?: number[]; summarizedTurns?: number[]; droppedTurns?: number[] }
@@ -74,6 +77,13 @@ export interface DeskApi {
   /** Opens a file a chat links to in its default app; types that could run code, or reveal=true, show it in Finder instead. */
   openPath(path: string, cwd: string, reveal?: boolean): Promise<{ ok: boolean; path: string; revealed?: boolean; error?: string }>
   loadItems(sessionId: string): Promise<unknown[]>
+  /** Drafts a skill (SKILL.md + bundled files) from a chat's turns with the compaction model. */
+  draftSkill(sessionId: string, o: { turns?: number[]; name: string }): Promise<SkillDraft>
+  scanSkill(md: string, files: SkillFileOut[]): Promise<SecretFinding[]>
+  readSkillFile(source: string): Promise<string | null>
+  addSkillFiles(cwd: string, taken: string[]): Promise<SkillFileDraft[]>
+  /** Writes the skill folder (never overwrites); returns its path. */
+  saveSkill(o: { cwd: string; dest: 'folder' | 'personal'; name: string; md: string; files: SkillFileOut[] }): Promise<string>
   deleteSession(id: string): Promise<void>
   /** Sends a prompt. While the chat is working it is queued under `qid` and joins at the next step. */
   send(sessionId: string, prompt: string, attachments?: Attachment[], qid?: string): Promise<void>

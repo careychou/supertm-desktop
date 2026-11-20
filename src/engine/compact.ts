@@ -99,7 +99,7 @@ export function normalizeClusters(clusters: Cluster[], turnIdx: number[]): Clust
   return out.sort((a, b) => a.turns[0] - b.turns[0])
 }
 
-async function complete(adapter: ModelAdapter, model: string, messages: Message[], signal?: AbortSignal): Promise<string> {
+export async function complete(adapter: ModelAdapter, model: string, messages: Message[], signal?: AbortSignal): Promise<string> {
   let text = ''
   for await (const d of adapter.stream({ model, messages, reasoning: 'off' }, signal ?? new AbortController().signal)) if (d.type === 'text') text += d.text
   return text

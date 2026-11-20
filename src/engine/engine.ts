@@ -10,7 +10,7 @@ import { ShellManager } from './tools/shell'
 import { closeSessionDb } from './tools/sql'
 import { buildMainSystem } from './prompt'
 import type { Memory } from '../shared/memory'
-import { applyCompaction, clusterTurns, estimateTokens, planTurns, priorSummary, splitHistoryTurns, summarizeTurns, type CompactPlan } from './compact'
+import { applyCompaction, complete, clusterTurns, estimateTokens, planTurns, priorSummary, splitHistoryTurns, summarizeTurns, type CompactPlan } from './compact'
 
 export interface SessionOptions {
   adapter: ModelAdapter
@@ -185,6 +185,11 @@ export class Session {
       if (first === this.o.model) throw e
       return { ...(await fn(this.compactAdapter(this.o.model), this.o.model)), model: this.o.model }
     }
+  }
+
+  /** One-shot completion with the compaction model (falls back to the chat model). */
+  async oneShot(system: string, user: string, signal?: AbortSignal) {
+    return this.withCompactModel(async (a, m) => ({ text: await complete(a, m, [{ role: 'system', content: system }, { role: 'user', content: user }], signal) }))
   }
 
   /** Turn digests plus topic clusters for the compaction picker. */

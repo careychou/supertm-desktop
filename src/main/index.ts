@@ -24,6 +24,8 @@ import type { ExternalSource } from '../shared/sync'
 import { externalDefaults, importExternal, scanClaude, scanCopilot, copilotRoot } from './import-external'
 import { azureLogin, azureUsageProvider, cancelAzureLogin, getAzureUsage, getLocalUsage, getProjectUsage, loadPricing, usageProvider } from './usage'
 import { registerPlugins } from './plugins'
+import { addedFiles, draftSkill, findingsFor, readSkillFile, skillsRoot, writeSkill, type SkillFileOut } from './skill-export'
+import type { ExportItem } from '../shared/export'
 import { registerUpdates } from './updates'
 import { registerExcel } from './excel'
 import { registerOffice } from './office'
@@ -285,6 +287,20 @@ function registerIpc() {
     fs.writeFileSync(r.filePath, md)
     return r.filePath
   })
+  ipcMain.handle('draftSkill', async (_e, id: string, o: { turns?: number[]; name: string }) => {
+    const row = store.getSession(id)
+    if (!row) throw new Error(`no session ${id}`)
+    const s = getLive(id)
+    return draftSkill({ items: store.loadUiItems(id) as ExportItem[], turns: o.turns, name: o.name, title: row.title, cwd: row.cwd, model: row.model, complete: (sys, user) => s.oneShot(sys, user) })
+  })
+  ipcMain.handle('scanSkill', (_e, md: string, files: SkillFileOut[]) => findingsFor(md, files))
+  ipcMain.handle('readSkillFile', (_e, source: string) => readSkillFile(source))
+  ipcMain.handle('addSkillFiles', async (_e, cwd: string, taken: string[]) => {
+    const r = await dialog.showOpenDialog(win!, { properties: ['openFile', 'multiSelections', 'showHiddenFiles'], defaultPath: cwd || undefined, message: 'Add scripts, data or reference files to the skill pack', buttonLabel: 'Add to skill' })
+    return r.canceled ? [] : addedFiles(r.filePaths, taken)
+  })
+  ipcMain.handle('saveSkill', (_e, o: { cwd: string; dest: 'folder' | 'personal'; name: string; md: string; files: SkillFileOut[] }) =>
+    writeSkill(skillsRoot(o.dest, o.cwd), o.name, o.md, o.files))
   ipcMain.handle('copyText', (_e, t: string) => clipboard.writeText(t))
   ipcMain.handle('revealFile', (_e, p: string) => eshell.showItemInFolder(p))
   ipcMain.handle('pathsExist', (_e, raws: string[], cwd: string) => existingPaths(raws, cwd))
