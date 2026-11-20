@@ -1,6 +1,6 @@
 # Release notes
 
-## 2.0.0
+## 1.3.0
 
 ### Settings changes reach open chats
 - Max turns (main and sub-agent) and max concurrent model calls now apply to chats that are already open, including one that is running right now. Before, a busy chat or one with a background command kept the old limits until the app restarted
