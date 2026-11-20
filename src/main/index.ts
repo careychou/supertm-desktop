@@ -351,6 +351,7 @@ function registerIpc() {
       const row = store.getSession(id)
       if (!row?.reasoning) sess.setReasoning(s.reasoning)
       if (!row?.mode) sess.setMode(s.defaultMode)
+      sess.setLimits({ maxConcurrency: s.maxConcurrency, maxTurnsMain: s.maxTurnsMain, maxTurnsSub: s.maxTurnsSub })
       // idle chats are rebuilt with the new provider settings; keep ones with background shells alive
       if (!sess.isBusy && !sess.shells.list().some((sh) => !sh.done)) { sess.dispose(); live.delete(id) }
     }

@@ -103,7 +103,7 @@ export class AgentManager implements AgentOps {
       try {
         info.finalText = await runLoop({
           agentId: id, model: this.o.model, adapter: this.o.adapter, sem: this.sem, hooks: this.o.hooks,
-          tools, signal: controller.signal, maxTurns: this.o.maxTurnsSub, reasoning: this.o.reasoning,
+          tools, signal: controller.signal, maxTurns: () => this.o.maxTurnsSub, reasoning: this.o.reasoning,
           ctx: { cwd: this.o.cwd, depth: opts.depth, hooks: this.o.hooks, gate: this.gate, registry: this.o.registry, agents: this, shells: this.o.shells, stateDir: this.o.stateDir },
           drainNotifications: () => this.drain(id)
         }, messages)

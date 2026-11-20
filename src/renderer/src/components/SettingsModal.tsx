@@ -67,7 +67,7 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
               <label>pricing.json<input value={s.pricingPath} placeholder={`auto: ~/${BRAND.homeDir}/pricing.json`} onChange={(e) => set('pricingPath', e.target.value)} /></label>
             </div>
             <div className="row3">
-              <label>Max concurrent model calls<input type="number" min={1} max={16} value={s.maxConcurrency} onChange={(e) => set('maxConcurrency', Number(e.target.value))} /></label>
+              <label>Max concurrent model calls<input type="number" min={1} max={64} value={s.maxConcurrency} onChange={(e) => set('maxConcurrency', Number(e.target.value))} /></label>
               <label>Max turns (main)<input type="number" min={1} value={s.maxTurnsMain} onChange={(e) => set('maxTurnsMain', Number(e.target.value))} /></label>
               <label>Max turns (sub-agent)<input type="number" min={1} value={s.maxTurnsSub} onChange={(e) => set('maxTurnsSub', Number(e.target.value))} /></label>
             </div>
@@ -116,7 +116,7 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
           <div className="row-actions modal-foot">
             {tab === 'providers' && <><button onClick={testAll}>Test connection</button><span className="muted small">{health}</span></>}
             <div className="spacer" />
-            <button onClick={onClose}>Cancel</button>
+            <button onClick={onClose} title="Close without saving changes on this tab">Close</button>
             <button className="primary" onClick={async () => { await window.desk.saveSettings(s); onClose() }}>Save</button>
           </div>
         )}

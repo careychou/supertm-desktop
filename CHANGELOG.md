@@ -1,5 +1,18 @@
 # Release notes
 
+## 2.0.0
+
+### Settings changes reach open chats
+- Max turns (main and sub-agent) and max concurrent model calls now apply to chats that are already open, including one that is running right now. Before, a busy chat or one with a background command kept the old limits until the app restarted
+- Raising the concurrency limit starts waiting model calls right away; lowering it lets calls in flight finish first
+
+### Higher defaults
+- New installs start with 20 concurrent model calls, 500 max turns for the main agent and 500 for sub-agents (was 4, 50 and 30). Saved settings are kept
+- Max concurrent model calls can now be set up to 64 (was 16)
+
+### Clearer Settings buttons
+- The Model providers, General, MS Office and Memory compaction tabs now show Close and Save. Close leaves without saving that tab's changes
+
 ## 1.2.17
 
 ### Switching chats while one is running

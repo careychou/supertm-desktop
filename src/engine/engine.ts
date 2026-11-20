@@ -78,6 +78,12 @@ export class Session {
 
   setModel(model: string) { this.o.model = model; this.manager.o.model = model }
   setReasoning(r: 'off' | 'low' | 'medium' | 'high') { this.o.reasoning = r; this.manager.o.reasoning = r }
+  /** Applies new limits to this chat right away, including a run in progress and its sub-agents. */
+  setLimits(l: { maxConcurrency?: number; maxTurnsMain?: number; maxTurnsSub?: number }) {
+    if (l.maxTurnsMain) this.o.maxTurnsMain = l.maxTurnsMain
+    if (l.maxTurnsSub) { this.o.maxTurnsSub = l.maxTurnsSub; this.manager.o.maxTurnsSub = l.maxTurnsSub }
+    if (l.maxConcurrency) { this.o.maxConcurrency = l.maxConcurrency; this.manager.o.maxConcurrency = l.maxConcurrency; this.manager.sem.setMax(l.maxConcurrency) }
+  }
   /** interactive asks before shell/write/url tools; autopilot approves them automatically. */
   setMode(mode: 'interactive' | 'autopilot') { this.manager.gate.setAutoApprove(mode === 'autopilot') }
   /** Stops background shells and closes the scratch database. */
@@ -107,7 +113,7 @@ export class Session {
       do {
         text = await runLoop({
           agentId: MAIN_ID, model: this.o.model, adapter: this.o.adapter, sem: this.manager.sem, hooks: this.o.hooks,
-          tools: [...selectTools(undefined, 0), ...(this.o.extraTools ?? [])], signal: controller.signal, maxTurns: this.o.maxTurnsMain ?? 50, reasoning: this.o.reasoning ?? 'medium',
+          tools: [...selectTools(undefined, 0), ...(this.o.extraTools ?? [])], signal: controller.signal, maxTurns: () => this.o.maxTurnsMain ?? 50, reasoning: this.o.reasoning ?? 'medium',
           ctx: { cwd: this.o.cwd, depth: 0, hooks: this.o.hooks, gate: this.manager.gate, registry: this.registry, agents: this.manager, shells: this.shells, stateDir: this.o.stateDir },
           drainNotifications: () => this.manager.drain(MAIN_ID),
           drainInput: () => this.drainQueue()

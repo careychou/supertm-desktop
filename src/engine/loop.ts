@@ -14,7 +14,8 @@ export interface LoopOptions {
   tools: ToolDef[]
   ctx: Omit<ToolContext, 'agentId' | 'signal'>
   signal: AbortSignal
-  maxTurns: number
+  /** A function is re-read every turn, so a changed setting reaches a running chat. */
+  maxTurns: number | (() => number)
   reasoning?: 'off' | 'low' | 'medium' | 'high'
   /** Returns pending notifications to inject before the next model call. */
   drainNotifications?: () => string[]
@@ -80,7 +81,8 @@ async function runTool(o: LoopOptions, call: { id: string; function: { name: str
 
 /** Runs model/tool turns until the model answers without tool calls. Mutates `messages`. Returns final text. */
 export async function runLoop(o: LoopOptions, messages: Message[]): Promise<string> {
-  for (let turn = 0; turn < o.maxTurns; turn++) {
+  const max = () => typeof o.maxTurns === 'function' ? o.maxTurns() : o.maxTurns
+  for (let turn = 0; turn < max(); turn++) {
     if (o.signal.aborted) throw new AbortedError()
     const notes = o.drainNotifications?.() ?? []
     if (notes.length) messages.push({ role: 'user', content: notes.map((n) => `<system_notification>${n}</system_notification>`).join('\n') })
@@ -93,5 +95,5 @@ export async function runLoop(o: LoopOptions, messages: Message[]): Promise<stri
     msg.tool_calls.forEach((c, i) => messages.push({ role: 'tool', tool_call_id: c.id, content: results[i] }))
     if (o.signal.aborted) throw new AbortedError()
   }
-  throw new Error(`stopped after reaching the max of ${o.maxTurns} turns`)
+  throw new Error(`stopped after reaching the max of ${max()} turns`)
 }
