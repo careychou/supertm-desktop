@@ -2,7 +2,8 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { shell, MAX_OUTPUT } from '../src/engine/tools/shell'
+import { shell } from '../src/engine/tools/shell'
+import { toolLimits } from '../src/engine/limits'
 import { readFile, writeFile, editFile, glob } from '../src/engine/tools/fs-tools'
 import { grep } from '../src/engine/tools/grep'
 import type { ToolContext } from '../src/engine/tools/types'
@@ -28,10 +29,10 @@ describe('shell', () => {
     expect(r).toContain('timed out after 1s')
   })
   it('truncates long output keeping the tail', async () => {
-    const r = await shell.run({ command: `python3 -c "print('x'*${MAX_OUTPUT * 2}); print('END')"` }, ctx)
+    const r = await shell.run({ command: `python3 -c "print('x'*${toolLimits.shellOutputChars * 2}); print('END')"` }, ctx)
     expect(r).toContain('truncated')
     expect(r).toContain('END')
-    expect(r.length).toBeLessThan(MAX_OUTPUT + 200)
+    expect(r.length).toBeLessThan(toolLimits.shellOutputChars + 200)
   })
   it('aborts', async () => {
     const ac = new AbortController()
@@ -51,6 +52,22 @@ describe('fs tools', () => {
     await writeFile.run({ path: 'new/f.txt', content: 'hello world' }, ctx)
     await editFile.run({ path: 'new/f.txt', old_str: 'world', new_str: 'there' }, ctx)
     expect(fs.readFileSync(`${ctx.cwd}/new/f.txt`, 'utf8')).toBe('hello there')
+  })
+  it('pages a file larger than the read cap by whole lines', async () => {
+    const old = toolLimits.readFileChars
+    toolLimits.readFileChars = 30
+    fs.writeFileSync(`${ctx.cwd}/long.txt`, Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join('\n'))
+    const r = await readFile.run({ path: 'long.txt' }, ctx)
+    toolLimits.readFileChars = old
+    expect(r).toMatch(/^line 1\n/)
+    const next = Number(r.match(/start=(\d+)/)![1])
+    expect(r).toContain(`line ${next - 1}\n[...output limit`)
+    expect(r).not.toContain(`line ${next}\n`)
+  })
+  it('appends parts to a file', async () => {
+    await writeFile.run({ path: 'big/p.html', content: '<a>' }, ctx)
+    await writeFile.run({ path: 'big/p.html', content: '<b>', append: true }, ctx)
+    expect(fs.readFileSync(`${ctx.cwd}/big/p.html`, 'utf8')).toBe('<a><b>')
   })
   it('rejects non-unique edits', async () => {
     await expect(editFile.run({ path: 'dup.txt', old_str: 'aa', new_str: 'z' }, ctx)).rejects.toThrow(/not unique/)

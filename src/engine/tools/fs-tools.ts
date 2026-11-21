@@ -1,3 +1,4 @@
+import { toolLimits } from '../limits'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { ToolDef } from './types'
@@ -23,31 +24,45 @@ export function* walk(root: string, limit = 20000): Generator<string> {
 
 export const readFile: ToolDef = {
   name: 'read_file',
-  description: 'Read a text file. Optionally pass a 1-based inclusive line range [start, end] (end -1 = EOF). Output is capped at 50KB.',
+  description: 'Read a text file. Optionally pass a 1-based inclusive line range [start, end] (end -1 = EOF). Long output is cut at a whole line with a note giving the next start line; call again from there to read the rest.',
   parameters: { type: 'object', properties: { path: { type: 'string' }, start: { type: 'integer' }, end: { type: 'integer' } }, required: ['path'] },
   async run(a, ctx) {
     const p = resolvePath(ctx.cwd, a.path)
     const st = fs.statSync(p)
     if (st.isDirectory()) return fs.readdirSync(p).sort().join('\n')
-    let txt = fs.readFileSync(p, 'utf8')
-    if (a.start) {
-      const lines = txt.split('\n')
-      const end = !a.end || a.end < 0 ? lines.length : a.end
-      txt = lines.slice(a.start - 1, end).map((l, i) => `${a.start + i}. ${l}`).join('\n')
+    const txt = fs.readFileSync(p, 'utf8')
+    const lines = txt.split('\n')
+    const start = Math.max(1, Number(a.start) || 1)
+    const numbered = !!a.start
+    const end = !a.end || a.end < 0 ? lines.length : Math.min(a.end, lines.length)
+    const max = toolLimits.readFileChars
+    const out: string[] = []
+    let size = 0
+    for (let n = start; n <= end; n++) {
+      const l = numbered ? `${n}. ${lines[n - 1]}` : lines[n - 1]
+      if (size + l.length + 1 > max && out.length) {
+        return out.join('\n') + `\n[...output limit reached: showing lines ${start}-${n - 1} of ${lines.length}. Call read_file with start=${n} to continue.]`
+      }
+      out.push(head(l, max))
+      size += l.length + 1
     }
-    return head(txt, 50_000)
+    return out.join('\n')
   }
 }
 
 export const writeFile: ToolDef = {
   name: 'write_file',
-  description: 'Create or overwrite a file with the given content. Parent directories are created.',
-  parameters: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } }, required: ['path', 'content'] },
+  description: 'Create or overwrite a file with the given content. Parent directories are created. For a large file (more than ~20KB), write it in parts: the first call creates it, each further call sets append=true to add the next part, so no single reply gets cut off by the output token limit.',
+  parameters: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' }, append: { type: 'boolean', description: 'Add content to the end of the file instead of overwriting it.' } }, required: ['path', 'content'] },
   permission: 'write',
-  summarize: (a) => `write ${a.path} (${String(a.content ?? '').length} chars)`,
+  summarize: (a) => `${a.append ? 'append to' : 'write'} ${a.path} (${String(a.content ?? '').length} chars)`,
   async run(a, ctx) {
     const p = resolvePath(ctx.cwd, a.path)
     fs.mkdirSync(path.dirname(p), { recursive: true })
+    if (a.append) {
+      fs.appendFileSync(p, a.content ?? '')
+      return `appended ${String(a.content ?? '').length} chars to ${p} (now ${fs.statSync(p).size} bytes)`
+    }
     fs.writeFileSync(p, a.content ?? '')
     return `wrote ${p}`
   }

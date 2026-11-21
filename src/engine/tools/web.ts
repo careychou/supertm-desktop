@@ -1,3 +1,4 @@
+import { toolLimits } from '../limits'
 import type { ToolDef } from './types'
 
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', mdash: '—', ndash: '–', hellip: '…', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“' }
@@ -32,7 +33,7 @@ export function htmlToMarkdown(html: string, base?: string): string {
 
 export const webFetch: ToolDef = {
   name: 'web_fetch',
-  description: 'Fetch a URL (http/https) and return the page as Markdown (or raw HTML with raw=true). max_length default 5000, max 20000; use start_index to page through long content.',
+  description: 'Fetch a URL (http/https) and return the page as Markdown (or raw HTML with raw=true). max_length default 5000; use start_index to page through long content.',
   parameters: {
     type: 'object',
     properties: { url: { type: 'string' }, max_length: { type: 'integer' }, start_index: { type: 'integer' }, raw: { type: 'boolean' } },
@@ -50,7 +51,7 @@ export const webFetch: ToolDef = {
     if (!/text|json|xml|javascript/.test(type) && type) return `Fetched ${r.url}: ${type} content (${r.headers.get('content-length') ?? '?'} bytes) is not text; download it with the shell tool instead.`
     const body = await r.text()
     const text = !a.raw && /html/.test(type) ? htmlToMarkdown(body, r.url) : body
-    const max = Math.min(Math.max(Number(a.max_length) || 5000, 100), 20_000)
+    const max = Math.min(Math.max(Number(a.max_length) || 5000, 100), toolLimits.webFetchMaxChars)
     const start = Math.max(Number(a.start_index) || 0, 0)
     const chunk = text.slice(start, start + max)
     const more = start + max < text.length ? `\n\n<content truncated: showing ${start}-${start + chunk.length} of ${text.length} chars; call again with start_index=${start + chunk.length}>` : ''

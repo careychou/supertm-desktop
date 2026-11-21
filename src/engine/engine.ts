@@ -21,6 +21,8 @@ export interface SessionOptions {
   maxConcurrency?: number
   maxTurnsMain?: number
   maxTurnsSub?: number
+  /** Output-token cap per model call; 0/undefined = the model's maximum. */
+  maxOutputTokens?: number
   autoApprove?: boolean
   reasoning?: 'off' | 'low' | 'medium' | 'high'
   /** This chat's memory: notes plus files (usually shared chat exports). */
@@ -57,7 +59,7 @@ export class Session {
     this.registry = loadRegistry({ cwd: o.cwd, home: o.home })
     this.manager = new AgentManager({
       adapter: o.adapter, hooks: o.hooks, registry: this.registry, cwd: o.cwd, model: o.model,
-      maxConcurrency: o.maxConcurrency ?? 4, maxTurnsSub: o.maxTurnsSub ?? 30, autoApprove: o.autoApprove, reasoning: o.reasoning ?? 'medium',
+      maxConcurrency: o.maxConcurrency ?? 4, maxTurnsSub: o.maxTurnsSub ?? 30, maxOutputTokens: o.maxOutputTokens, autoApprove: o.autoApprove, reasoning: o.reasoning ?? 'medium',
       shells: this.shells, stateDir: o.stateDir
     })
     this.messages = [{ role: 'system', content: this.system() }, ...(o.history ?? [])]
@@ -79,7 +81,8 @@ export class Session {
   setModel(model: string) { this.o.model = model; this.manager.o.model = model }
   setReasoning(r: 'off' | 'low' | 'medium' | 'high') { this.o.reasoning = r; this.manager.o.reasoning = r }
   /** Applies new limits to this chat right away, including a run in progress and its sub-agents. */
-  setLimits(l: { maxConcurrency?: number; maxTurnsMain?: number; maxTurnsSub?: number }) {
+  setLimits(l: { maxConcurrency?: number; maxTurnsMain?: number; maxTurnsSub?: number; maxOutputTokens?: number }) {
+    if (l.maxOutputTokens !== undefined) { this.o.maxOutputTokens = l.maxOutputTokens; this.manager.o.maxOutputTokens = l.maxOutputTokens }
     if (l.maxTurnsMain) this.o.maxTurnsMain = l.maxTurnsMain
     if (l.maxTurnsSub) { this.o.maxTurnsSub = l.maxTurnsSub; this.manager.o.maxTurnsSub = l.maxTurnsSub }
     if (l.maxConcurrency) { this.o.maxConcurrency = l.maxConcurrency; this.manager.o.maxConcurrency = l.maxConcurrency; this.manager.sem.setMax(l.maxConcurrency) }
@@ -113,7 +116,7 @@ export class Session {
       do {
         text = await runLoop({
           agentId: MAIN_ID, model: this.o.model, adapter: this.o.adapter, sem: this.manager.sem, hooks: this.o.hooks,
-          tools: [...selectTools(undefined, 0), ...(this.o.extraTools ?? [])], signal: controller.signal, maxTurns: () => this.o.maxTurnsMain ?? 50, reasoning: this.o.reasoning ?? 'medium',
+          tools: [...selectTools(undefined, 0), ...(this.o.extraTools ?? [])], signal: controller.signal, maxTurns: () => this.o.maxTurnsMain ?? 50, maxTokens: () => this.o.maxOutputTokens ?? 0, reasoning: this.o.reasoning ?? 'medium',
           ctx: { cwd: this.o.cwd, depth: 0, hooks: this.o.hooks, gate: this.manager.gate, registry: this.registry, agents: this.manager, shells: this.shells, stateDir: this.o.stateDir },
           drainNotifications: () => this.manager.drain(MAIN_ID),
           drainInput: () => this.drainQueue()

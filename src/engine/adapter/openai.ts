@@ -3,6 +3,7 @@ import { parseSSE } from './sse'
 import { fitRequest, type RequestBudget } from '../content'
 import { responsesBody, responsesDeltas } from './responses'
 import { anthropicDeltas, toAnthropic, type AnthropicTtl } from './anthropic'
+import { outputCap, sendWithOutputRetry } from '../limits'
 
 export interface AdapterConfig {
   baseUrl: string
@@ -86,7 +87,7 @@ export class OpenAIAdapter implements ModelAdapter {
       stream_options: { include_usage: true }
     }
     // Azure reasoning models (o-series, GPT-5) only accept max_completion_tokens; all current Azure models take it
-    body[this.azure ? 'max_completion_tokens' : 'max_tokens'] = req.maxTokens ?? 16000
+    body[this.azure ? 'max_completion_tokens' : 'max_tokens'] = outputCap(req.model, req.maxTokens)
     if (req.tools?.length) body.tools = req.tools
     if (req.reasoning && req.reasoning !== 'off') {
       body.reasoning_effort = req.reasoning
@@ -100,7 +101,8 @@ export class OpenAIAdapter implements ModelAdapter {
       body: JSON.stringify(body),
       signal
     })
-    let res = await post()
+    const tokKey = this.azure ? 'max_completion_tokens' : 'max_tokens'
+    let res = await sendWithOutputRetry(req.model, body, tokKey, post)
     // Claude (and other non-OpenAI models) on Azure AI Foundry: chat/completions says "Requested API is currently not supported"
     if (this.azure && res.status === 404) {
       const t = await res.clone().text().catch(() => '')
@@ -155,23 +157,24 @@ export class OpenAIAdapter implements ModelAdapter {
   /** Claude on Azure AI Foundry: Anthropic Messages API on the same resource host and key. */
   private async *streamAnthropic(req: ChatRequest, signal: AbortSignal): AsyncIterable<Delta> {
     const body = { ...toAnthropic(fitMessages(req.messages, this.cfg.budget?.()), req, this.cfg.cacheTtl ?? '5m'), model: req.model, stream: true }
-    const res = await (this.cfg.fetch ?? fetch)(`${azureHost(this.cfg.baseUrl)}/anthropic/v1/messages`, {
+    const res = await sendWithOutputRetry(req.model, body, 'max_tokens', () => (this.cfg.fetch ?? fetch)(`${azureHost(this.cfg.baseUrl)}/anthropic/v1/messages`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': this.cfg.apiKey, 'anthropic-version': AZURE_ANTHROPIC_VERSION },
       body: JSON.stringify(body),
       signal
-    })
+    }))
     await failIfBad(res)
     yield* anthropicDeltas(parseSSE(res.body as unknown as AsyncIterable<Uint8Array>))
   }
 
   private async *streamResponses(req: ChatRequest, signal: AbortSignal): AsyncIterable<Delta> {
-    const res = await (this.cfg.fetch ?? fetch)(`${azureHost(this.cfg.baseUrl)}/openai/v1/responses`, {
+    const body = responsesBody(req, fitMessages(req.messages, this.cfg.budget?.()))
+    const res = await sendWithOutputRetry(req.model, body, 'max_output_tokens', () => (this.cfg.fetch ?? fetch)(`${azureHost(this.cfg.baseUrl)}/openai/v1/responses`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...this.headers() },
-      body: JSON.stringify(responsesBody(req, fitMessages(req.messages, this.cfg.budget?.()))),
+      body: JSON.stringify(body),
       signal
-    })
+    }))
     await failIfBad(res)
     yield* responsesDeltas(res.body as unknown as AsyncIterable<Uint8Array>)
   }

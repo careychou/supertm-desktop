@@ -9,6 +9,7 @@ import { OpenAIAdapter } from './openai'
 import { VertexAuth } from './vertex-auth'
 import { anthropicDeltas, toAnthropic, type AnthropicTtl } from './anthropic'
 import { parseVertexModels, planSpeech, speechPrompt, type VertexModel } from '../../shared/providers'
+import { sendWithOutputRetry } from '../limits'
 
 export interface VertexConfig {
   project: string
@@ -105,7 +106,7 @@ export class VertexAdapter implements ModelAdapter {
   private async *claude(m: VertexModel, req: ChatRequest, signal: AbortSignal): AsyncIterable<Delta> {
     const body = { ...toAnthropic(req.messages, req, this.cfg.cacheTtl ?? '5m'), anthropic_version: ANTHROPIC_VERSION, stream: true }
     const slug = m.id.slice('anthropic/'.length)
-    const res = await this.post(`${this.base(m.location)}/publishers/anthropic/models/${encodeURIComponent(slug)}:streamRawPredict`, body, signal)
+    const res = await sendWithOutputRetry(req.model, body, 'max_tokens', () => this.post(`${this.base(m.location)}/publishers/anthropic/models/${encodeURIComponent(slug)}:streamRawPredict`, body, signal))
     if (!res.ok || !res.body) throw await httpError(res)
     yield* anthropicDeltas(parseSSE(res.body as unknown as AsyncIterable<Uint8Array>))
   }
@@ -185,7 +186,7 @@ export class VertexAdapter implements ModelAdapter {
     if (hit) return hit
     let text = ''
     try {
-      for await (const d of this.stream({ model: vm, maxTokens: 4096, messages: [{ role: 'user', content: [{ type: 'text', text: DESCRIBE_PROMPT }, { type: 'image_url', image_url: { url } }] }] }, signal)) if (d.type === 'text') text += d.text
+      for await (const d of this.stream({ model: vm, messages: [{ role: 'user', content: [{ type: 'text', text: DESCRIBE_PROMPT }, { type: 'image_url', image_url: { url } }] }] }, signal)) if (d.type === 'text') text += d.text
     } catch (e) {
       if (signal.aborted) throw e
     }

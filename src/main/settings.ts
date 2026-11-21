@@ -6,8 +6,9 @@ import { defaultProvider } from '../engine/config'
 import { migrateProviders, type ProviderEntry } from '../shared/providers'
 import { BRAND } from '../shared/brand'
 import { DEFAULT_LIMITS, type AttachLimits } from '../shared/attach'
+import { DEFAULT_TOOL_LIMITS, type ToolLimits } from '../engine/limits'
 
-export interface Settings extends AttachLimits {
+export interface Settings extends AttachLimits, ToolLimits {
   /** Model providers; the first one's models appear unprefixed, others as `<id>::<model>`. */
   providers: ProviderEntry[]
   defaultModel: string
@@ -15,6 +16,8 @@ export interface Settings extends AttachLimits {
   maxConcurrency: number
   maxTurnsMain: number
   maxTurnsSub: number
+  /** Output-token cap per model call; 0 = each model's maximum. */
+  maxOutputTokens: number
   reasoning: 'off' | 'low' | 'medium' | 'high'
   /** Mode for new chats: autopilot runs shell/write/fetch tools without asking. */
   defaultMode: 'interactive' | 'autopilot'
@@ -67,7 +70,7 @@ export function loadSettings(): Settings {
   const first: ProviderEntry = v.project
     ? { id: 'default', name: BRAND.vertexProviderName, kind: 'vertex', baseUrl: '', apiKey: '', project: v.project, location: v.location, credentialsPath: '', models: [...v.models], visionModel: v.visionModel, cacheTtl: '5m' }
     : { id: 'default', name: BRAND.defaultProviderName, kind: 'openai', baseUrl: d.baseUrl, apiKey: d.apiKey }
-  const defaults: Settings = { providers: [first], defaultModel: 'anthropic/claude-sonnet-5', defaultCwd: os.homedir(), maxConcurrency: 20, maxTurnsMain: 500, maxTurnsSub: 500, reasoning: 'medium', defaultMode: 'autopilot', autoCompact: 'suggest', compactThreshold: 80000, compactKeepRecent: 2, compactModel: BRAND.defaultCompactModel, compactIdleMinutes: 5, compactHardLimit: 120000, compactMinGain: 20000, ...DEFAULT_LIMITS, requestMaxMB: 20, imageTurns: 4, pricingPath: '', dailyBudget: 0, excelEnabled: true, excelConfirm: 'ask', excelBackup: true, officeEnabled: true, officeConfirm: 'ask', officeTrack: false, officeBackup: true }
+  const defaults: Settings = { providers: [first], defaultModel: 'anthropic/claude-sonnet-5', defaultCwd: os.homedir(), maxConcurrency: 20, maxTurnsMain: 500, maxTurnsSub: 500, maxOutputTokens: 0, ...DEFAULT_TOOL_LIMITS, reasoning: 'medium', defaultMode: 'autopilot', autoCompact: 'suggest', compactThreshold: 80000, compactKeepRecent: 2, compactModel: BRAND.defaultCompactModel, compactIdleMinutes: 5, compactHardLimit: 120000, compactMinGain: 20000, ...DEFAULT_LIMITS, requestMaxMB: 20, imageTurns: 4, pricingPath: '', dailyBudget: 0, excelEnabled: true, excelConfirm: 'ask', excelBackup: true, officeEnabled: true, officeConfirm: 'ask', officeTrack: false, officeBackup: true }
   try {
     const raw = JSON.parse(fs.readFileSync(file(), 'utf8'))
     const open = (enc?: string): string | undefined => {

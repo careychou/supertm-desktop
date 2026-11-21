@@ -153,6 +153,35 @@ describe('Session main loop', () => {
     expect(res[2]).toMatch(/invalid JSON/)
   })
 
+  it('does not run tool calls cut off by the output limit, and validates required args', async () => {
+    const { s, adapter, cwd, events } = mk((r) => toolResults(r).length ? say('ok') : [
+      { type: 'tool_call', index: 0, id: 'c0', name: 'write_file', args: '{"path":"x.html","content":"<html>' },
+      call('c1', 'shell', { description: 'no command' }),
+      { type: 'finish', reason: 'length' }
+    ])
+    await s.send('go')
+    const res = toolResults(adapter.calls[1])
+    expect(res[0]).toMatch(/output token limit/)
+    expect(res[1]).toMatch(/output token limit/)
+    expect(fs.existsSync(path.join(cwd, 'x.html'))).toBe(false)
+    expect(events.some((e) => e.kind === 'error' && /output token limit/.test(e.message))).toBe(true)
+  })
+
+  it('returns missing required args to the model without running the tool', async () => {
+    const { s, adapter } = mk((r) => toolResults(r).length ? say('ok') : [call('c0', 'shell', { description: 'x' }), { type: 'finish', reason: 'tool_calls' }])
+    await s.send('go')
+    expect(toolResults(adapter.calls[1])[0]).toMatch(/missing required argument: command/)
+  })
+
+  it('passes the max output tokens setting to the model, live', async () => {
+    const { s, adapter } = mk(() => say('ok'), { maxOutputTokens: 9000 })
+    await s.send('a')
+    s.setLimits({ maxOutputTokens: 0 })
+    await s.send('b')
+    expect(adapter.calls[0].maxTokens).toBe(9000)
+    expect(adapter.calls[1].maxTokens).toBeUndefined()
+  })
+
   it('stops at max turns', async () => {
     const { s } = mk(() => [call('c0', 'list_agents', {}), { type: 'finish', reason: 'tool_calls' }], { maxTurnsMain: 3 })
     const r = await s.send('go')

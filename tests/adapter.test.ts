@@ -3,6 +3,7 @@ import http from 'node:http'
 import { parseSSE } from '../src/engine/adapter/sse'
 import { Assembler } from '../src/engine/adapter/assemble'
 import { OpenAIAdapter } from '../src/engine/adapter/openai'
+import { modelMaxOutput, outputCap, resetLearnedCaps, retryOutputCap } from '../src/engine/limits'
 import type { Delta } from '../src/engine/types'
 
 async function* chunks(...parts: string[]) {
@@ -82,6 +83,29 @@ describe('OpenAIAdapter', () => {
     expect(out).toContainEqual({ type: 'usage', prompt: 5, completion: 7, cached: 3, cacheWrite: 1 })
   })
 
+  it("sends the model's max output and retries once with the cap a 400 names", async () => {
+    resetLearnedCaps()
+    const sent: number[] = []
+    const srv = await server((req, res) => {
+      let b = ''
+      req.on('data', (c) => (b += c))
+      req.on('end', () => {
+        const n = JSON.parse(b).max_tokens
+        sent.push(n)
+        if (n > 32768) { res.writeHead(400); res.end(`{"error":{"message":"max_tokens is too large: ${n}. This model supports at most 32768 completion tokens"}}`); return }
+        res.writeHead(200, { 'content-type': 'text/event-stream' })
+        res.end('data: {"choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n')
+      })
+    })
+    const ad = new OpenAIAdapter({ baseUrl: srv.url, apiKey: 'k' })
+    const run = async (maxTokens?: number) => { for await (const _ of ad.stream({ model: 'gpt-5-mini', maxTokens, messages: [{ role: 'user', content: 'hi' }] }, new AbortController().signal)); }
+    await run()
+    await run()
+    await run(8000)
+    srv.close()
+    expect(sent).toEqual([128000, 32768, 32768, 8000])
+  })
+
   it('throws a readable error on 401', async () => {
     const srv = await server((_req, res) => { res.writeHead(401); res.end('{"error":{"message":"bad proxy api key"}}') })
     const ad = new OpenAIAdapter({ baseUrl: srv.url, apiKey: 'k' })
@@ -154,5 +178,21 @@ describe('OpenAIAdapter reasoning', () => {
     srv.close()
     expect(bodies[1].messages[1].tool_calls[0].extra_content).toEqual({ google: { thought_signature: 'SIG' } })
     expect(bodies[2].messages[1].tool_calls[0]).not.toHaveProperty('extra_content')
+  })
+})
+
+describe('output caps', () => {
+  it('knows model maximums and falls back for unknown models', () => {
+    expect(modelMaxOutput('azure::claude-fable-5-2')).toBe(64000)
+    expect(modelMaxOutput('anthropic/claude-sonnet-5')).toBe(128000)
+    expect(modelMaxOutput('google/gemini-2.5-pro')).toBe(65536)
+    expect(modelMaxOutput('my-local-llm')).toBe(32000)
+    expect(outputCap('anthropic/claude-sonnet-5', 4000)).toBe(4000)
+  })
+  it('shrinks only this request when the prompt leaves too little context room', () => {
+    resetLearnedCaps()
+    expect(retryOutputCap('anthropic/claude-x', 64000, 'input length and `max_tokens` exceed context limit: 150000 + 64000 > 200000')).toBe(49488)
+    expect(outputCap('anthropic/claude-x')).toBe(64000)
+    expect(retryOutputCap('m', 64000, 'reasoning_effort is not supported')).toBeNull()
   })
 })

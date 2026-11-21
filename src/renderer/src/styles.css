@@ -655,3 +655,11 @@ body.dialog-resizing, body.dialog-resizing * { user-select: none; }
 .import-done { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid #aceebb; background: #dafbe1; color: #116329; border-radius: 8px; font-size: 13.5px; }
 .import-done.none { border-color: var(--line); background: #f6f8fa; color: var(--text); }
 .modal.resizable > .modal-foot:last-child { margin-top: auto; }
+
+/* ⓘ setting explanations */
+.lbl { display: inline-flex; align-items: center; gap: 5px; }
+.info { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 14px; height: 14px; border: 1px solid #8c959f; border-radius: 50%; color: #656d76; font: italic 600 9.5px/1 Georgia, serif; cursor: help; user-select: none; }
+.info:hover, .info:focus-visible { border-color: #0969da; color: #0969da; outline: none; }
+.info-pop { position: fixed; z-index: 10000; padding: 9px 11px; background: #1f2328; color: #f0f3f6; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.25); font: 12.5px/1.45 -apple-system, BlinkMacSystemFont, sans-serif; font-style: normal; pointer-events: none; white-space: normal; }
+.info-ex { margin-top: 6px; padding-top: 6px; border-top: 1px solid #3d444d; color: #d1d9e0; }
+.info-ex b { color: #fff; font-weight: 600; }

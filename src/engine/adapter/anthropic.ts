@@ -1,4 +1,5 @@
 import type { ChatRequest, ContentPart, Delta, Message, ToolSchema } from '../types'
+import { outputCap } from '../limits'
 
 /** Anthropic Messages API mapping, shared by Claude on Google Vertex and on Azure AI Foundry. */
 export type AnthropicTtl = '5m' | '1h' | 'off'
@@ -26,7 +27,7 @@ function toBlocks(c: string | ContentPart[] | null | undefined): Block[] {
 }
 
 /** OpenAI chat request → Anthropic Messages body (no model / anthropic_version: each host adds its own): system, tools, tool_use/tool_result, images, thinking. */
-export function toAnthropic(msgs: Message[], req: Pick<ChatRequest, 'tools' | 'maxTokens' | 'reasoning'>, cacheTtl: AnthropicTtl = '5m'): Record<string, any> {
+export function toAnthropic(msgs: Message[], req: Pick<ChatRequest, 'tools' | 'maxTokens' | 'reasoning'> & { model?: string }, cacheTtl: AnthropicTtl = '5m'): Record<string, any> {
   const system: string[] = []
   const out: Array<{ role: 'user' | 'assistant'; content: Block[] }> = []
   const push = (role: 'user' | 'assistant', blocks: Block[]) => {
@@ -51,7 +52,7 @@ export function toAnthropic(msgs: Message[], req: Pick<ChatRequest, 'tools' | 'm
   }
   const body: Record<string, any> = {
     messages: out.length ? out : [{ role: 'user', content: [{ type: 'text', text: '' }] }],
-    max_tokens: req.maxTokens ?? 16000
+    max_tokens: outputCap(req.model ?? '', req.maxTokens)
   }
   if (system.length) body.system = system.join('\n\n')
   // Claude 5 (Vertex and Azure) only accepts adaptive thinking, and rejects temperature/top_p

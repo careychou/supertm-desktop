@@ -1,3 +1,4 @@
+import { toolLimits } from './limits'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -27,23 +28,22 @@ function environment(cwd: string): string {
 
 function skillsSection(reg: Registry): string {
   if (!reg.skills.length) return ''
-  return `# Available skills (load with the skill tool)\n` + reg.skills.map((s) => `- ${s.name}: ${clip(s.description, 250)}`).join('\n')
+  return `# Available skills (load with the skill tool)\n` + reg.skills.map((s) => `- ${s.name}: ${clip(s.description, toolLimits.descriptionChars)}`).join('\n')
 }
 
 function agentsSection(reg: Registry): string {
   if (!reg.agents.length) return ''
-  return `# Available agents (pass as "agent" to the task tool)\n` + reg.agents.map((a) => `- ${a.name}: ${clip(a.description, 200)}`).join('\n')
+  return `# Available agents (pass as "agent" to the task tool)\n` + reg.agents.map((a) => `- ${a.name}: ${clip(a.description, toolLimits.descriptionChars)}`).join('\n')
 }
 
-const MEMORY_CAP = 60_000
 
 
 function memoryBody(m: Partial<Memory>): string {
   const parts: string[] = []
-  if (m.notes?.trim()) parts.push(`<notes>\n${clip(m.notes.trim(), MEMORY_CAP)}\n</notes>`)
+  if (m.notes?.trim()) parts.push(`<notes>\n${clip(m.notes.trim(), toolLimits.memoryCapChars)}\n</notes>`)
   for (const p of m.files ?? []) {
     let body: string
-    try { body = clip(fs.readFileSync(p, 'utf8'), MEMORY_CAP) } catch (e: any) { body = `(could not read: ${e.message})` }
+    try { body = clip(fs.readFileSync(p, 'utf8'), toolLimits.memoryCapChars) } catch (e: any) { body = `(could not read: ${e.message})` }
     parts.push(`<memory file="${path.basename(p)}" path="${p}">\n${body}\n</memory>`)
   }
   return parts.join('\n\n')

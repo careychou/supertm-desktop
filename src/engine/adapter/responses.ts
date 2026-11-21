@@ -1,4 +1,5 @@
 import type { ChatRequest, Delta, Message } from '../types'
+import { outputCap } from '../limits'
 import { parseSSE } from './sse'
 
 /**
@@ -20,7 +21,7 @@ export function responsesBody(req: ChatRequest, messages: Message[]): Record<str
       for (const tc of m.tool_calls ?? []) input.push({ type: 'function_call', call_id: tc.id, name: tc.function.name, arguments: tc.function.arguments || '{}' })
     } else input.push({ type: 'function_call_output', call_id: m.tool_call_id, output: m.content })
   }
-  const body: Record<string, any> = { model: req.model, input, stream: true, store: false, max_output_tokens: req.maxTokens ?? 16000 }
+  const body: Record<string, any> = { model: req.model, input, stream: true, store: false, max_output_tokens: outputCap(req.model, req.maxTokens) }
   if (req.tools?.length) body.tools = req.tools.map((t) => ({ type: 'function', name: t.function.name, description: t.function.description, parameters: t.function.parameters }))
   if (req.reasoning && req.reasoning !== 'off') body.reasoning = { effort: req.reasoning, summary: 'auto' }
   return body

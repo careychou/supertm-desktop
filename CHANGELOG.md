@@ -1,5 +1,20 @@
 # Release notes
 
+## 1.4.1
+
+### Long replies and file writes no longer cut off
+- Model replies were capped at 16k tokens, so writing a large file could stop midway and a half-written tool call still ran. Each model now gets its full output limit (for example ~128k tokens for Claude 5). If a provider allows less, the app retries once with the limit the provider reports
+- A reply cut off at the limit is detected: an incomplete tool call is not run, and the model is told to write the content in smaller parts. `write_file` can now append, so big files can be written in pieces
+- Tool calls with missing required arguments, or arguments that aren't a JSON object, are reported back to the model instead of failing silently
+
+### Limits you can change (Settings → General → Limits)
+- New settings: Max output tokens (0 = model maximum), Shell output kept, Shell timeout max, read_file per call, web_fetch per call, Memory file max and Skill/agent description length
+- read_file and web_fetch limits are per call, not file size limits: a long file is returned in parts that end on a whole line, and the model is told which line to read from next
+- Image descriptions on Vertex are no longer capped at 4,096 tokens
+
+### ⓘ explanations in Settings
+- Every setting on the General, MS Office and Memory compaction tabs has an ⓘ. Hover, tab to it or click it to see what the setting does, with an example
+
 ## 1.4.0
 
 ### Export a chat as a skill

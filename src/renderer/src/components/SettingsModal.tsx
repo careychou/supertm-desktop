@@ -7,6 +7,7 @@ import { ProvidersTab } from './ProvidersTab'
 import { SyncTab } from './SyncTab'
 import { UpdatesPanel } from './UpdatesPanel'
 import { Dialog } from './Dialog'
+import { Lbl } from './Info'
 
 type Tab = 'providers' | 'general' | 'office' | 'compaction' | 'skills' | 'sync' | 'about'
 
@@ -36,7 +37,7 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
         {tab === 'providers' && <ProvidersTab s={s} setS={setS} />}
         {tab === 'general' && (
           <div className="form">
-            <label>Default thinking for new chats (each chat can override it below its chat box)
+            <label><Lbl text="Default thinking for new chats (each chat can override it below its chat box)" tip="How much the model reasons before answering in a new chat. More thinking helps hard problems but is slower and uses more tokens. Models without thinking ignore it." ex="Medium for everyday work; switch one chat to High to debug a tricky formula, or Off for quick lookups." />
               <select value={s.reasoning} onChange={(e) => set('reasoning', e.target.value)}>
                 <option value="off">Off — no thinking block</option>
                 <option value="low">Low</option>
@@ -44,7 +45,7 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
                 <option value="high">High — deeper, slower</option>
               </select>
             </label>
-            <label>Default mode for new chats (each chat can switch below its chat box)
+            <label><Lbl text="Default mode for new chats (each chat can switch below its chat box)" tip="Whether the agent may run shell commands, write files and fetch web pages on its own, or must ask you first each time." ex="Autopilot: asked to tidy a folder, it moves the files itself. Interactive: you approve each move." />
               <select value={s.defaultMode} onChange={(e) => set('defaultMode', e.target.value)}>
                 <option value="autopilot">Autopilot — run shell, file and web tools without asking</option>
                 <option value="interactive">Interactive — ask before shell, file writes and web fetches</option>
@@ -52,24 +53,38 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
             </label>
             <div className="sub-h">Attachments: compress to save tokens and stay under the provider's request limit</div>
             <div className="row3">
-              <label>Image max edge (px)<input type="number" min={256} max={4096} step={64} value={s.imageMaxEdge} onChange={(e) => set('imageMaxEdge', Number(e.target.value))} /></label>
-              <label>JPEG quality<input type="number" min={40} max={100} value={s.imageQuality} onChange={(e) => set('imageQuality', Number(e.target.value))} /></label>
-              <label>Max per image (KB)<input type="number" min={100} step={100} value={s.imageMaxKB} onChange={(e) => set('imageMaxKB', Number(e.target.value))} /></label>
+              <label><Lbl text="Image max edge (px)" tip="Attached images are shrunk so their longest side is at most this many pixels. Smaller images cost fewer tokens; most models see little benefit above ~1568." ex="At 1568, a 4000×3000 photo is sent as 1568×1176." /><input type="number" min={256} max={4096} step={64} value={s.imageMaxEdge} onChange={(e) => set('imageMaxEdge', Number(e.target.value))} /></label>
+              <label><Lbl text="JPEG quality" tip="Compression quality (40–100) used when an image is re-encoded. Lower means smaller files with more blur." ex="82 keeps text in screenshots readable at about a third of the size of 100." /><input type="number" min={40} max={100} value={s.imageQuality} onChange={(e) => set('imageQuality', Number(e.target.value))} /></label>
+              <label><Lbl text="Max per image (KB)" tip="If an image is still larger than this after resizing, quality is lowered until it fits." ex="At 1500, a 6 MB PNG screenshot is sent as a JPEG under 1.5 MB." /><input type="number" min={100} step={100} value={s.imageMaxKB} onChange={(e) => set('imageMaxKB', Number(e.target.value))} /></label>
             </div>
             <div className="row3">
-              <label>Max document chars<input type="number" min={2000} step={10000} value={s.docMaxChars} onChange={(e) => set('docMaxChars', Number(e.target.value))} /></label>
-              <label>Re-send images from last N prompts<input type="number" min={0} max={50} value={s.imageTurns} onChange={(e) => set('imageTurns', Number(e.target.value))} title="Older images are replaced by a short note. 0 = always re-send all." /></label>
-              <label>Max request size (MB)<input type="number" min={1} max={100} value={s.requestMaxMB} onChange={(e) => set('requestMaxMB', Number(e.target.value))} title="Oldest images are dropped first if a request would exceed this. Vertex rejects > 30 MB." /></label>
+              <label><Lbl text="Max document chars" tip="Text pulled from an attached document (PDF, Word, Excel, etc.) is clipped to this many characters. About 4 characters ≈ 1 token." ex="At 80000, a 300-page PDF sends its first ~80k characters (~20k tokens); the agent can still read the rest with its file tools." /><input type="number" min={2000} step={10000} value={s.docMaxChars} onChange={(e) => set('docMaxChars', Number(e.target.value))} /></label>
+              <label><Lbl text="Re-send images from last N prompts" tip="Images attached in your most recent N prompts are re-sent on every model call; older ones are replaced by a short note to save tokens. 0 = always re-send all." ex="At 4, a screenshot from 10 prompts ago becomes [image omitted], so the model no longer sees its pixels." /><input type="number" min={0} max={50} value={s.imageTurns} onChange={(e) => set('imageTurns', Number(e.target.value))} /></label>
+              <label><Lbl text="Max request size (MB)" tip="Upper bound for one request to the provider. If a request would be larger, the oldest images are dropped first. Vertex rejects requests above 30 MB." ex="At 20, a chat with 15 large screenshots drops the earliest ones instead of failing." /><input type="number" min={1} max={100} value={s.requestMaxMB} onChange={(e) => set('requestMaxMB', Number(e.target.value))} /></label>
             </div>
             <div className="sub-h">AI usage (⌘⇧U)</div>
             <div className="row3">
-              <label>Daily budget (USD, 0 = off)<input type="number" min={0} step={5} value={s.dailyBudget} onChange={(e) => set('dailyBudget', Number(e.target.value))} title="Fills the usage ring in the sidebar against today's estimated spend." /></label>
-              <label>pricing.json<input value={s.pricingPath} placeholder={`auto: ~/${BRAND.homeDir}/pricing.json`} onChange={(e) => set('pricingPath', e.target.value)} /></label>
+              <label><Lbl text="Daily budget (USD, 0 = off)" tip="Your own spending target. It only fills the usage ring in the sidebar against today's estimated cost; nothing is blocked." ex="At 25, spending $10 today shows the ring 40% full." /><input type="number" min={0} step={5} value={s.dailyBudget} onChange={(e) => set('dailyBudget', Number(e.target.value))} /></label>
+              <label><Lbl text="pricing.json" tip="Path to a file with per-model token prices used to estimate cost in the usage view. Leave blank to use the default location." ex="~/prices/pricing.json with an entry for claude-sonnet-5 at $3 / $15 per million input / output tokens." /><input value={s.pricingPath} placeholder={`auto: ~/${BRAND.homeDir}/pricing.json`} onChange={(e) => set('pricingPath', e.target.value)} /></label>
             </div>
             <div className="row3">
-              <label>Max concurrent model calls<input type="number" min={1} max={64} value={s.maxConcurrency} onChange={(e) => set('maxConcurrency', Number(e.target.value))} /></label>
-              <label>Max turns (main)<input type="number" min={1} value={s.maxTurnsMain} onChange={(e) => set('maxTurnsMain', Number(e.target.value))} /></label>
-              <label>Max turns (sub-agent)<input type="number" min={1} value={s.maxTurnsSub} onChange={(e) => set('maxTurnsSub', Number(e.target.value))} /></label>
+              <label><Lbl text="Max concurrent model calls" tip="How many model requests may run at the same time across the main agent and its sub-agents. Lower it if your provider rate-limits you." ex="At 20, a task that fans out to 30 sub-agents runs 20 at once and queues the other 10." /><input type="number" min={1} max={64} value={s.maxConcurrency} onChange={(e) => set('maxConcurrency', Number(e.target.value))} /></label>
+              <label><Lbl text="Max turns (main)" tip="Safety stop: the most model calls (each followed by its tool calls) the main agent may make for one prompt before it stops and reports." ex="At 500, a runaway loop that keeps retrying a failing command stops after 500 steps." /><input type="number" min={1} value={s.maxTurnsMain} onChange={(e) => set('maxTurnsMain', Number(e.target.value))} /></label>
+              <label><Lbl text="Max turns (sub-agent)" tip="The same safety stop for each sub-agent the main agent delegates to." ex="At 500, a research sub-agent stops after 500 steps and returns what it has." /><input type="number" min={1} value={s.maxTurnsSub} onChange={(e) => set('maxTurnsSub', Number(e.target.value))} /></label>
+            </div>
+            <div className="sub-h">Limits</div>
+            <div className="row3">
+              <label><Lbl text="Max output tokens (0 = model max)" tip="Longest reply the model may write in one call, including a file it writes in a tool call. 0 uses each model's maximum; if a provider accepts less, the app retries with what it allows." ex="0 lets Claude 5 write up to ~128k tokens. Setting 8000 would cut off writing a large file, and the model would be told to write it in parts." /><input type="number" min={0} step={1000} value={s.maxOutputTokens} onChange={(e) => set('maxOutputTokens', Math.max(0, Number(e.target.value)))} /></label>
+              <label><Lbl text="Shell output kept (chars)" tip="When a shell command prints more than this, only the last part is shown to the model. Larger values let it see more, at the cost of context." ex="At 30000, a build that prints 200k characters of logs shows the model the final 30k, where errors usually are." /><input type="number" min={1000} step={10000} value={s.shellOutputChars} onChange={(e) => set('shellOutputChars', Number(e.target.value))} /></label>
+              <label><Lbl text="Shell timeout max (s)" tip="The longest a regular shell command may run before it is stopped. Longer jobs can run in async (background) mode." ex="At 600, a 15-minute test suite run normally is stopped after 10 minutes; run in async mode it continues." /><input type="number" min={10} step={60} value={s.shellTimeoutMaxSec} onChange={(e) => set('shellTimeoutMaxSec', Number(e.target.value))} /></label>
+            </div>
+            <div className="row3">
+              <label><Lbl text="read_file per call (chars)" tip="Not a file size limit. Each read_file call returns at most this much; a longer file is returned in parts and the model is told which line to continue from." ex="At 50000, a 200k-character log is read in about 4 calls." /><input type="number" min={1000} step={10000} value={s.readFileChars} onChange={(e) => set('readFileChars', Number(e.target.value))} /></label>
+              <label><Lbl text="web_fetch per call (chars)" tip="Not a page size limit. Each web_fetch call returns at most this much text; the model pages through longer content with start_index." ex="At 20000, a 70k-character article takes 4 fetches." /><input type="number" min={1000} step={10000} value={s.webFetchMaxChars} onChange={(e) => set('webFetchMaxChars', Number(e.target.value))} /></label>
+              <label><Lbl text="Memory file max (chars)" tip="Each memory file and your notes are clipped to this length in the system prompt. Applies to new or restarted chats." ex="At 60000, a 90k-character memory file contributes only its first 60k characters." /><input type="number" min={1000} step={10000} value={s.memoryCapChars} onChange={(e) => set('memoryCapChars', Number(e.target.value))} /></label>
+            </div>
+            <div className="row3">
+              <label><Lbl text="Skill/agent description (chars)" tip="Skill and agent descriptions listed in the system prompt are clipped to this so the list stays compact. The full skill is still loaded when used. Applies to new or restarted chats." ex="At 250, a 600-character description is shortened, so put the key trigger words first." /><input type="number" min={50} step={50} value={s.descriptionChars} onChange={(e) => set('descriptionChars', Number(e.target.value))} /></label>
             </div>
           </div>
         )}
@@ -77,7 +92,7 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
         {tab === 'compaction' && (
           <div className="form">
             <div className="muted small">Compaction folds older turns into a summary so long chats stay fast and cheap. It rewrites the start of the conversation, so the provider's prompt cache (Claude: ~5 min) is rebuilt once on the next call. It pays off when you keep using the chat, so the defaults wait until the cache has gone cold anyway, unless the chat is very large.</div>
-            <label>Compaction model (summaries and topic grouping)
+            <label><Lbl text="Compaction model (summaries and topic grouping)" tip="The model that writes the summary when older turns are compacted, and groups turns by topic in the compact dialog." ex="Pick a fast model like Haiku or Flash: summaries come back quicker and cheaper than with the chat's large model." />
               <select value={s.compactModel} onChange={(e) => set('compactModel', e.target.value)}>
                 <option value="">Same as the chat's model</option>
                 {!compactKnown && <option value={s.compactModel}>{s.compactModel} (not listed)</option>}
@@ -88,21 +103,21 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
               <span className="muted small">A fast, cheaper model is usually enough to summarize. If it fails, the chat's model is used instead.</span>
             </label>
             <div className="row3">
-              <label>Long chats
+              <label><Lbl text="Long chats" tip="What to do when a chat grows past the threshold: nothing, show a suggestion to compact, or compact automatically using the rules below." ex="Suggest: at 85k tokens a banner offers Compact. Auto: it compacts by itself once the rules are met." />
                 <select value={s.autoCompact} onChange={(e) => set('autoCompact', e.target.value)}>
                   <option value="off">Do nothing</option>
                   <option value="suggest">Suggest compacting</option>
                   <option value="auto">Auto-compact (cache-aware)</option>
                 </select>
               </label>
-              <label>Threshold (tokens)<input type="number" min={5000} step={5000} value={s.compactThreshold} onChange={(e) => set('compactThreshold', Number(e.target.value))} title="Chats above this size are candidates for compaction." /></label>
-              <label>Keep last N turns verbatim<input type="number" min={0} max={20} value={s.compactKeepRecent} onChange={(e) => set('compactKeepRecent', Number(e.target.value))} /></label>
+              <label><Lbl text="Threshold (tokens)" tip="Chats larger than this become candidates for compaction." ex="At 80000, a chat at ~80k tokens gets a compact suggestion (or auto-compacts, if enabled)." /><input type="number" min={5000} step={5000} value={s.compactThreshold} onChange={(e) => set('compactThreshold', Number(e.target.value))} /></label>
+              <label><Lbl text="Keep last N turns verbatim" tip="The most recent N turns are never summarized, so the model keeps exact details of what you were just doing." ex="At 2, your last two prompts and replies stay word-for-word; everything older becomes a summary." /><input type="number" min={0} max={20} value={s.compactKeepRecent} onChange={(e) => set('compactKeepRecent', Number(e.target.value))} /></label>
             </div>
             <div className="sub-h">Auto-compact rules (when Long chats = Auto)</div>
             <div className="row3">
-              <label>Wait until idle (minutes)<input type="number" min={0} max={240} value={s.compactIdleMinutes} onChange={(e) => set('compactIdleMinutes', Number(e.target.value))} title="Only compact when the chat's last model call is at least this old, so the prompt cache has already expired. 0 = compact immediately." /></label>
-              <label>Compact anyway above (tokens)<input type="number" min={0} step={10000} value={s.compactHardLimit} onChange={(e) => set('compactHardLimit', Number(e.target.value))} title="Above this size, compact even if the cache is warm. 0 = never override the idle wait." /></label>
-              <label>Minimum saving (tokens)<input type="number" min={0} step={5000} value={s.compactMinGain} onChange={(e) => set('compactMinGain', Number(e.target.value))} title="Skip if the turns that would be summarized are smaller than this; small compactions cost more in cache writes than they save." /></label>
+              <label><Lbl text="Wait until idle (minutes)" tip="Auto-compact only after the chat has had no model call for this long, so the provider's prompt cache has already expired and isn't wasted. 0 = compact immediately." ex="At 5, a chat you are actively using isn't compacted until you pause for 5 minutes." /><input type="number" min={0} max={240} value={s.compactIdleMinutes} onChange={(e) => set('compactIdleMinutes', Number(e.target.value))} /></label>
+              <label><Lbl text="Compact anyway above (tokens)" tip="Above this size, compact even if the chat is active and the cache is warm, because the chat is getting slow and expensive. 0 = always wait for idle." ex="At 120000, a 130k-token chat compacts right away instead of waiting." /><input type="number" min={0} step={10000} value={s.compactHardLimit} onChange={(e) => set('compactHardLimit', Number(e.target.value))} /></label>
+              <label><Lbl text="Minimum saving (tokens)" tip="Skip compaction if the turns that would be summarized are smaller than this. Small compactions cost more in cache rebuilding than they save." ex="At 20000, if only 8k tokens of older turns could be summarized, nothing happens." /><input type="number" min={0} step={5000} value={s.compactMinGain} onChange={(e) => set('compactMinGain', Number(e.target.value))} /></label>
             </div>
             <div className="muted small">Rule: compact when the chat is over the threshold <b>and</b> at least the minimum saving would be summarized <b>and</b> (it has been idle for the wait time <b>or</b> it is over the hard limit).</div>
           </div>
@@ -166,7 +181,7 @@ function OfficeTab({ s, setS }: { s: Settings; setS(s: Settings): void }) {
   return (
     <div className="form">
       <p className="muted small">Lets the agent read and edit Excel workbooks, Word documents and PowerPoint presentations without an add-in. A file open in its app is edited in place while you watch, and nothing is saved until you save it. Attach an open file with the 📎 button in the chat box, or give the agent a file path.</p>
-      <label>Work with Microsoft Office
+      <label><Lbl text="Work with Microsoft Office" tip="Which Office apps the agent may read and edit through their own scripting, without an add-in." ex="Excel only: the agent can update a workbook you have open, but can't touch Word or PowerPoint files." />
         <select value={apps} onChange={(e) => setS({ ...s, excelEnabled: e.target.value === 'all' || e.target.value === 'excel', officeEnabled: e.target.value === 'all' || e.target.value === 'office' })}>
           <option value="all">On — Excel, Word and PowerPoint</option>
           <option value="excel">Excel only</option>
@@ -182,19 +197,19 @@ function OfficeTab({ s, setS }: { s: Settings; setS(s: Settings): void }) {
         <button onClick={() => void check()} disabled={busy || !live.length}>{busy ? 'Checking…' : waiting.length ? 'Connect to Office' : 'Check again'}</button>
         {!!waiting.length && !busy && <span className="muted small">Connects to {waiting.map((k) => OFFICE_LABEL[k]).join(', ')} in one go. macOS asks once for each app the first time.</span>}
       </div>
-      <label>Before changing a file
+      <label><Lbl text="Before changing a file" tip="Whether to preview an Office edit and ask for approval before applying it. Applies to Interactive chats; Autopilot chats apply edits without asking." ex="Ask first: before filling column D with formulas, you see the planned change and click Allow." />
         <select value={confirm} onChange={(e) => { const v = e.target.value as Settings['excelConfirm']; setS({ ...s, excelConfirm: v, officeConfirm: v }) }}>
           <option value="ask">Show the change and ask first (Interactive chats; Autopilot applies without asking)</option>
           <option value="never">Apply without asking</option>
         </select>
       </label>
-      <label>Back up a file before the first edit
+      <label><Lbl text="Back up a file before the first edit" tip="Before the agent first edits a file, a copy of its last saved version is saved next to it." ex="Editing Budget.xlsx first creates Budget.backup.xlsx in the same folder." />
         <select value={s.excelBackup || s.officeBackup ? 'on' : 'off'} onChange={(e) => { const v = e.target.value === 'on'; setS({ ...s, excelBackup: v, officeBackup: v }) }}>
           <option value="on">On — saves name.backup.xlsx / .docx / .pptx next to the file</option>
           <option value="off">Off</option>
         </select>
       </label>
-      <label>Word: make edits as tracked changes
+      <label><Lbl text="Word: make edits as tracked changes" tip="In Word, the agent's edits appear as tracked suggestions you can accept or reject, instead of direct changes." ex="On: asking it to tighten a paragraph shows deletions and insertions in Review › Track Changes." />
         <select value={s.officeTrack ? 'on' : 'off'} onChange={(e) => setS({ ...s, officeTrack: e.target.value === 'on' })}>
           <option value="off">Off — edits are made directly; undo with ⌘Z</option>
           <option value="on">On — edits appear as suggestions you accept or reject in Word</option>

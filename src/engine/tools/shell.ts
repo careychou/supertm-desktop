@@ -2,14 +2,17 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import type { ToolDef } from './types'
 import { tail } from './util'
 
-export const MAX_OUTPUT = 30_000
+import { toolLimits } from '../limits'
+
+/** Current shell output cap (Settings → Limits). */
+const max = () => toolLimits.shellOutputChars
 
 export function runShell(command: string, cwd: string, timeoutSec: number, signal: AbortSignal): Promise<{ code: number | null; output: string; timedOut: boolean }> {
   return new Promise((resolve) => {
     const p = spawn('/bin/zsh', ['-lc', command], { cwd, detached: true, env: { ...process.env, PAGER: 'cat', GIT_PAGER: 'cat' } })
     let out = ''
     let timedOut = false
-    const onData = (d: Buffer) => { out += d.toString(); if (out.length > MAX_OUTPUT * 4) out = out.slice(-MAX_OUTPUT * 2) }
+    const onData = (d: Buffer) => { out += d.toString(); if (out.length > max() * 4) out = out.slice(-max() * 2) }
     p.stdout.on('data', onData)
     p.stderr.on('data', onData)
     const kill = () => {
@@ -22,7 +25,7 @@ export function runShell(command: string, cwd: string, timeoutSec: number, signa
     p.on('close', (code) => {
       clearTimeout(timer)
       signal.removeEventListener('abort', onAbort)
-      resolve({ code, output: tail(out, MAX_OUTPUT), timedOut })
+      resolve({ code, output: tail(out, max()), timedOut })
     })
     p.on('error', (e) => { clearTimeout(timer); resolve({ code: -1, output: String(e), timedOut }) })
   })
@@ -42,7 +45,7 @@ export class ShellManager {
     const onData = (d: Buffer) => {
       sh.out += d.toString()
       // keep memory bounded; shift the read cursor with the dropped prefix
-      if (sh.out.length > MAX_OUTPUT * 8) { const cut = sh.out.length - MAX_OUTPUT * 4; sh.out = sh.out.slice(cut); sh.read = Math.max(0, sh.read - cut) }
+      if (sh.out.length > max() * 8) { const cut = sh.out.length - max() * 4; sh.out = sh.out.slice(cut); sh.read = Math.max(0, sh.read - cut) }
     }
     p.stdout.on('data', onData)
     p.stderr.on('data', onData)
@@ -66,7 +69,7 @@ export class ShellManager {
     const chunk = sh.out.slice(sh.read)
     sh.read = sh.out.length
     const status = sh.done ? `exited with code ${sh.code}` : 'still running'
-    return `${tail(chunk, MAX_OUTPUT) || '(no new output)'}\n<${sh.id} ${status}>`
+    return `${tail(chunk, max()) || '(no new output)'}\n<${sh.id} ${status}>`
   }
 
   write(id: string, input: string) {
@@ -89,11 +92,11 @@ function kill(pid?: number) {
   setTimeout(() => { try { process.kill(-pid, 'SIGKILL') } catch { /* gone */ } }, 3000).unref()
 }
 
-const DESCRIPTION = { type: 'string', description: 'A short human-readable description of what this does (max ~60 chars), e.g. "Install dependencies" or "Run unit tests". Shown to the user instead of the raw command.' }
+const DESCRIPTION = { type: 'string', description: 'Always set: a short human-readable description of what this does (max ~60 chars), e.g. "Install dependencies" or "Run unit tests". Shown to the user instead of the raw command.' }
 
 export const shell: ToolDef = {
   name: 'shell',
-  description: 'Run a shell command (zsh -lc) in the working folder: run scripts you wrote (python x.py, node y.js), install packages, inspect the system. mode "sync" (default) waits for it to finish (timeout seconds: default 120, max 600). mode "async" starts it in the background, waits initial_wait seconds (default 10) and returns its output so far plus a shellId: use it for servers, watchers, long builds or interactive programs, then read_shell / write_shell / stop_shell. Output is capped at 30KB (tail kept).',
+  description: 'Run a shell command (zsh -lc) in the working folder: run scripts you wrote (python x.py, node y.js), install packages, inspect the system. mode "sync" (default) waits for it to finish (timeout seconds: default 120). mode "async" starts it in the background, waits initial_wait seconds (default 10) and returns its output so far plus a shellId: use it for servers, watchers, long builds or interactive programs, then read_shell / write_shell / stop_shell. Long output keeps only the tail.',
   parameters: {
     type: 'object',
     properties: {
@@ -103,7 +106,7 @@ export const shell: ToolDef = {
       timeout: { type: 'integer', description: 'sync only: seconds before the command is killed' },
       initial_wait: { type: 'integer', description: 'async only: seconds to wait for initial output' }
     },
-    required: ['command', 'description']
+    required: ['command']
   },
   permission: 'shell',
   summarize: (a) => String(a.command),
@@ -114,7 +117,7 @@ export const shell: ToolDef = {
       const wait = Math.min(Math.max(Number(a.initial_wait) || 10, 1), 600)
       return `shellId: ${sh.id}\n` + (await ctx.shells.readNew(sh.id, wait, ctx.signal))
     }
-    const t = Math.min(Math.max(Number(a.timeout) || 120, 1), 600)
+    const t = Math.min(Math.max(Number(a.timeout) || 120, 1), toolLimits.shellTimeoutMaxSec)
     const r = await runShell(a.command, ctx.cwd, t, ctx.signal)
     const status = r.timedOut ? `timed out after ${t}s` : `exit code ${r.code}`
     return `${r.output}\n<${status}>`

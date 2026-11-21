@@ -11,6 +11,7 @@ import { ProviderRouter } from '../engine/adapter/router'
 import { MEDIA_SCHEME } from '../engine/adapter/vertex'
 import { orphanToPrimary, rehomeModel, type ProviderEntry } from '../shared/providers'
 import { COMPACT_ID, Session } from '../engine/engine'
+import { setToolLimits } from '../engine/limits'
 import { loadRegistry } from '../engine/registry/registry'
 import type { Message, PermissionDecision } from '../engine/types'
 import type { AppInfo, CompactItem, PushEvent } from '../shared/api'
@@ -75,7 +76,7 @@ function getLive(id: string): Session {
   if (!row) throw new Error(`no session ${id}`)
   s = new Session({
     adapter: adapter(), cwd: row.cwd, model: row.model, history: store.loadMessages(id),
-    maxConcurrency: settings.maxConcurrency, maxTurnsMain: settings.maxTurnsMain, maxTurnsSub: settings.maxTurnsSub, reasoning: effortOf(row), memory: parseMemory(row.memories), folderMemory: folderMemoryOf(row.cwd),
+    maxConcurrency: settings.maxConcurrency, maxTurnsMain: settings.maxTurnsMain, maxTurnsSub: settings.maxTurnsSub, maxOutputTokens: settings.maxOutputTokens, reasoning: effortOf(row), memory: parseMemory(row.memories), folderMemory: folderMemoryOf(row.cwd),
     autoApprove: modeOf(row) === 'autopilot', stateDir: stateDirOf(id), compactModel: () => settings.compactModel,
     extraTools: [...(plugins?.tools ?? []), ...(excel?.tools() ?? []), ...(office?.tools() ?? [])], extraPrompt: [excel?.prompt(), office?.prompt()].filter(Boolean).join('\n\n') || undefined,
     hooks: {
@@ -362,12 +363,12 @@ function registerIpc() {
       s = { ...s, defaultModel: re(s.defaultModel), compactModel: re(s.compactModel) }
       for (const [id, sess] of live) { const m = store.getSession(id)?.model; if (m) sess.setModel(m) }
     }
-    settings = s; saveSettings(s); currentRouter = null
+    settings = s; saveSettings(s); currentRouter = null; setToolLimits(s)
     for (const [id, sess] of live) {
       const row = store.getSession(id)
       if (!row?.reasoning) sess.setReasoning(s.reasoning)
       if (!row?.mode) sess.setMode(s.defaultMode)
-      sess.setLimits({ maxConcurrency: s.maxConcurrency, maxTurnsMain: s.maxTurnsMain, maxTurnsSub: s.maxTurnsSub })
+      sess.setLimits({ maxConcurrency: s.maxConcurrency, maxTurnsMain: s.maxTurnsMain, maxTurnsSub: s.maxTurnsSub, maxOutputTokens: s.maxOutputTokens })
       // idle chats are rebuilt with the new provider settings; keep ones with background shells alive
       if (!sess.isBusy && !sess.shells.list().some((sh) => !sh.done)) { sess.dispose(); live.delete(id) }
     }
@@ -455,6 +456,7 @@ app.whenReady().then(() => {
   })
   setSettingsDir(dataHome)
   settings = loadSettings()
+  setToolLimits(settings)
   store = new Store(dataHome)
   registerIpc()
   plugins = registerPlugins(ipcMain, { dataHome, push, folders: () => store.listFolders().map((f) => f.path) })
