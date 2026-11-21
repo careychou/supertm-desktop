@@ -1,6 +1,6 @@
 {
   "name": "supertm-desktop",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Lightweight Copilot-like desktop agent for custom models",
   "main": "out/main/index.js",
   "type": "commonjs",
@@ -46,6 +46,7 @@
     "publish": null
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "dompurify": "^3.4.17",
     "exceljs": "^4.4.0",
     "highlight.js": "^11.12.0",

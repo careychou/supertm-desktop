@@ -1,5 +1,23 @@
 # Release notes
 
+## 1.4.2
+
+### MCP servers (Settings → MCP servers)
+- Connect the agent to MCP servers. Their tools show up in every chat, for both the main agent and sub-agents
+- Supports `http` (streamable HTTP), `sse` and local `stdio` servers. Servers from `~/.copilot/mcp-config.json` and a folder's `.vscode/mcp.json` / `.github/mcp.json` are picked up automatically
+- **+ Add server** lets you add as many servers as you like, and edit, rename, turn off or remove them. Servers from Copilot CLI or folder config files are read-only here; their cards have an **Open file** button
+- Servers that need sign-in (OAuth) open your browser. After you sign in, the token is stored encrypted and refreshed automatically. You can set a pre-registered client ID, scopes and redirect port under Advanced
+- Uses the system proxy (including PAC files) and macOS trust. **Extra trusted certificates** lets you add a PEM bundle of company certificate authorities
+- Certificate errors now explain what's wrong with the chain. Trust is restored automatically if the network service restarts
+
+### Share dialog
+- The tabs are now **Export session as raw Markdown** and **Export to skill pack**
+- New optional **Skill instructions** box: tell the generator how to turn the chat into a skill (for example "make the store number an input" or "skip the debugging turns")
+
+### Check for new releases at launch
+- A few seconds after start-up the app checks for a newer release. If there is one, a banner offers **See what's new & install**, **Later** or **Skip this version**. Nothing is downloaded until you choose to
+- Turn it off under Settings → General. Settings → About → Check for updates still works either way
+
 ## 1.4.1
 
 ### Long replies and file writes no longer cut off

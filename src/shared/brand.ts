@@ -33,5 +33,7 @@ export const BRAND = {
   /** Per-folder plugin settings file, in <folder>/.github/ (its lock is <name>.lock.json). */
   folderConfig: 'supertm.json',
   /** Marketplaces a folder starts with (users add their own in the Plugins panel). */
-  pluginMarketplaces: [] as MarketplaceRef[]
+  pluginMarketplaces: [] as MarketplaceRef[],
+  /** Default PEM bundle of extra root/intermediate CAs trusted for MCP servers and other HTTPS calls ('' = none). */
+  extraCaFile: ''
 }

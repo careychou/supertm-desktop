@@ -66,6 +66,7 @@ export function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [settingsTab, setSettingsTab] = useState<'about' | undefined>()
   const [appUpdate, setAppUpdate] = useState<string | null>(null)
+  const [updateBanner, setUpdateBanner] = useState<{ version: string; name?: string } | null>(null)
   const [showUsage, setShowUsage] = useState(false)
   const [usage, setUsage] = useState<{ today: number | null; budget: number }>({ today: null, budget: 0 })
   const refreshUsage = useCallback(async () => {
@@ -149,8 +150,8 @@ export function App() {
         return
       }
       if (p.type === 'pluginsLog') return
-      if (p.type === 'update' || p.type === 'importProgress') return
-      if (p.type === 'updateAvailable') { setAppUpdate(p.version); return }
+      if (p.type === 'update' || p.type === 'importProgress' || p.type === 'mcpStatus') return
+      if (p.type === 'updateAvailable') { setAppUpdate(p.version); setUpdateBanner({ version: p.version, name: p.name }); return }
       if (p.type === 'busy') setBusyIds((prev) => { const n = new Set(prev); p.busy ? n.add(p.sessionId) : n.delete(p.sessionId); return n })
       const mine = p.sessionId === currentRef.current?.id
       if (p.type === 'agent' && (p.event.kind === 'user_input' || p.event.kind === 'queue_cleared')) {
@@ -350,6 +351,14 @@ export function App() {
             {parent && <><span className="sep">›</span><button className="crumb link" onClick={() => open(parent.id)}>{parent.title}</button></>}
             <span className="sep">›</span><span className="crumb strong">{current.title}</span>
             {current.parent_id && current.fork_turn !== null && <span className="fork-badge">⑂ forked at turn {current.fork_turn + 1}</span>}
+          </div>
+        )}
+        {updateBanner && (
+          <div className={`update-banner${current ? '' : ' top'}`} role="status">
+            <span>⬆ <b>{BRAND.title} {updateBanner.version}</b> is available{updateBanner.name && updateBanner.name !== updateBanner.version && !updateBanner.name.endsWith(updateBanner.version) ? ` — ${updateBanner.name}` : ''}.</span>
+            <button className="primary" onClick={() => { setUpdateBanner(null); setSettingsTab('about'); setShowSettings(true) }}>See what's new &amp; install</button>
+            <button onClick={() => setUpdateBanner(null)} title="Hide for now; the ⬆ in the sidebar still shows it">Later</button>
+            <button className="link" onClick={() => { void window.desk.skipUpdate(updateBanner.version); setUpdateBanner(null); setAppUpdate(null) }} title="Don't offer this version again on launch. You'll still be told about newer ones, and Settings → About can install it any time.">Skip this version</button>
           </div>
         )}
         {/* after the drag strip and header: Electron resolves drag regions in DOM order, so it must come last to stay clickable */}

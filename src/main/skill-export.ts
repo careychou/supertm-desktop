@@ -65,12 +65,12 @@ const textOf = (f: SkillFileOut) => f.content ?? (f.source ? readSkillFile(f.sou
 
 /** Drafts SKILL.md for the selected turns with `complete` (the compaction model). */
 export async function draftSkill(o: {
-  items: ExportItem[]; turns?: number[]; name: string; title: string; cwd: string; model: string
+  items: ExportItem[]; turns?: number[]; name: string; instruction?: string; title: string; cwd: string; model: string
   complete(system: string, user: string): Promise<{ text: string; model: string }>
 }): Promise<SkillDraft> {
   const files = skillFiles(o.items, o.turns, o.cwd)
   const transcript = clipTranscript(exportMarkdown(o.items, { title: o.title, cwd: o.cwd, model: o.model, turns: o.turns, includeTools: true }))
-  const r = await o.complete('You write concise, reusable instruction files (skills) for AI coding agents.', skillDraftPrompt(o.name, transcript, files.filter((f) => f.suggested).map((f) => f.target)))
+  const r = await o.complete('You write concise, reusable instruction files (skills) for AI coding agents.', skillDraftPrompt(o.name, transcript, files.filter((f) => f.suggested).map((f) => f.target), o.instruction))
   if (!r.text.trim()) throw new Error('the model returned an empty skill')
   const md = finalizeSkillMd(r.text, o.name)
   return { md, files, findings: findingsFor(md, files.filter((f) => f.suggested)), model: r.model }

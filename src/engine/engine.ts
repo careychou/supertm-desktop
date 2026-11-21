@@ -37,6 +37,8 @@ export interface SessionOptions {
   compactModel?: () => string
   /** App-specific tools for the main agent (e.g. a branded build's installer). */
   extraTools?: ToolDef[]
+  /** Tools that can change between turns (MCP servers); read at each run. A sub-agent passes its agent `tools` list. */
+  dynamicTools?: (agentTools?: string[]) => ToolDef[]
   /** Extra guidance appended to the main agent's system prompt. */
   extraPrompt?: string
 }
@@ -60,7 +62,7 @@ export class Session {
     this.manager = new AgentManager({
       adapter: o.adapter, hooks: o.hooks, registry: this.registry, cwd: o.cwd, model: o.model,
       maxConcurrency: o.maxConcurrency ?? 4, maxTurnsSub: o.maxTurnsSub ?? 30, maxOutputTokens: o.maxOutputTokens, autoApprove: o.autoApprove, reasoning: o.reasoning ?? 'medium',
-      shells: this.shells, stateDir: o.stateDir
+      shells: this.shells, stateDir: o.stateDir, dynamicTools: o.dynamicTools
     })
     this.messages = [{ role: 'system', content: this.system() }, ...(o.history ?? [])]
     this.manager.onBackgroundDone = (parentId) => {
@@ -116,7 +118,7 @@ export class Session {
       do {
         text = await runLoop({
           agentId: MAIN_ID, model: this.o.model, adapter: this.o.adapter, sem: this.manager.sem, hooks: this.o.hooks,
-          tools: [...selectTools(undefined, 0), ...(this.o.extraTools ?? [])], signal: controller.signal, maxTurns: () => this.o.maxTurnsMain ?? 50, maxTokens: () => this.o.maxOutputTokens ?? 0, reasoning: this.o.reasoning ?? 'medium',
+          tools: [...selectTools(undefined, 0), ...(this.o.extraTools ?? []), ...(this.o.dynamicTools?.() ?? [])], signal: controller.signal, maxTurns: () => this.o.maxTurnsMain ?? 50, maxTokens: () => this.o.maxOutputTokens ?? 0, reasoning: this.o.reasoning ?? 'medium',
           ctx: { cwd: this.o.cwd, depth: 0, hooks: this.o.hooks, gate: this.manager.gate, registry: this.registry, agents: this.manager, shells: this.shells, stateDir: this.o.stateDir },
           drainNotifications: () => this.manager.drain(MAIN_ID),
           drainInput: () => this.drainQueue()

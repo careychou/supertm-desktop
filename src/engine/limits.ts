@@ -16,6 +16,8 @@ export interface ToolLimits {
   memoryCapChars: number
   /** Skill and agent descriptions listed in the system prompt are clipped to this many chars. */
   descriptionChars: number
+  /** MCP tool result cap, in chars. */
+  mcpOutputChars: number
 }
 
 export const DEFAULT_TOOL_LIMITS: ToolLimits = {
@@ -24,7 +26,8 @@ export const DEFAULT_TOOL_LIMITS: ToolLimits = {
   readFileChars: 50_000,
   webFetchMaxChars: 20_000,
   memoryCapChars: 60_000,
-  descriptionChars: 250
+  descriptionChars: 250,
+  mcpOutputChars: 50_000
 }
 
 export const toolLimits: ToolLimits = { ...DEFAULT_TOOL_LIMITS }

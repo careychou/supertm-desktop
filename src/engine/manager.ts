@@ -1,5 +1,5 @@
 import type { Hooks, Message, ModelAdapter } from './types'
-import type { AgentInfo, AgentOps } from './tools/types'
+import type { AgentInfo, AgentOps, ToolDef } from './tools/types'
 import type { Registry } from './registry/registry'
 import type { ShellManager } from './tools/shell'
 import { PermissionGate } from './permissions'
@@ -30,6 +30,8 @@ export interface ManagerOptions {
   reasoning?: 'off' | 'low' | 'medium' | 'high'
   shells?: ShellManager
   stateDir?: string
+  /** Extra tools (MCP servers) filtered by the sub-agent's `tools` list. */
+  dynamicTools?: (agentTools?: string[]) => ToolDef[]
 }
 
 let counter = 0
@@ -94,7 +96,7 @@ export class AgentManager implements AgentOps {
     parent.children.add(id)
 
     const canDelegate = opts.depth < MAX_DEPTH
-    const tools = selectTools(def?.tools, opts.depth)
+    const tools = [...selectTools(def?.tools, opts.depth), ...(this.o.dynamicTools?.(def?.tools) ?? [])]
     const messages: Message[] = [
       { role: 'system', content: buildSubSystem(this.o.registry, this.o.cwd, def, canDelegate) },
       { role: 'user', content: opts.prompt }

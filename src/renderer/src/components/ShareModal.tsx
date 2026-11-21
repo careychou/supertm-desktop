@@ -30,6 +30,7 @@ export function ShareModal({ session, onClose }: Props) {
   const [kind, setKind] = useState<'md' | 'skill'>('md')
   const [name, setName] = useState(() => skillName(session.title))
   const [dest, setDest] = useState<'folder' | 'personal'>('folder')
+  const [instruction, setInstruction] = useState('')
   const [draft, setDraft] = useState<SkillDraft | null>(null)
   const [md, setMd] = useState('')
   const [files, setFiles] = useState<PackFile[]>([])
@@ -55,7 +56,7 @@ export function ShareModal({ session, onClose }: Props) {
   const makeDraft = async () => {
     setBusy('generate'); setErr(''); setSaved(null); setFindings(null)
     try {
-      const d = await window.desk.draftSkill(session.id, { turns: all ? undefined : selected, name })
+      const d = await window.desk.draftSkill(session.id, { turns: all ? undefined : selected, name, instruction })
       setDraft(d); setMd(d.md); setFindings(d.findings); setTab(SKILL_TAB)
       setFiles(d.files.map((f) => ({ ...f, on: f.suggested, text: f.content })))
     } catch (e: any) { setErr(e.message ?? String(e)) } finally { setBusy('') }
@@ -98,8 +99,8 @@ export function ShareModal({ session, onClose }: Props) {
   return (
     <Dialog id="share" className="share" title="Share session" onClose={onClose} closable={!busy}>
         <div className="seg">
-          <button className={kind === 'md' ? 'on' : ''} onClick={() => setKind('md')}>Markdown</button>
-          <button className={kind === 'skill' ? 'on' : ''} onClick={() => setKind('skill')}>Skill</button>
+          <button className={kind === 'md' ? 'on' : ''} onClick={() => setKind('md')} title="The conversation as a plain Markdown document">Export session as raw Markdown</button>
+          <button className={kind === 'skill' ? 'on' : ''} onClick={() => setKind('skill')} title="A reusable skill: SKILL.md plus the scripts and files the chat used">Export to skill pack</button>
         </div>
         {kind === 'md'
           ? <p className="muted">Exports to a Markdown file. Anyone can read it, and any {BRAND.title} chat can attach it as <b>memory</b>.</p>
@@ -142,6 +143,10 @@ export function ShareModal({ session, onClose }: Props) {
           </label>
           {name && nameErr && <div className="error">{nameErr}</div>}
           <div className="muted small">Tip: start it with your name (e.g. <code>carey-</code>) to keep your skills apart from shared ones.</div>
+          <label>Skill instructions <span className="muted small">(optional)</span>
+            <textarea rows={3} value={instruction} disabled={!!busy} onChange={(e) => setInstruction(e.target.value)}
+              placeholder={'How should the turns be codified? e.g. "Focus on the weekly sales pull only, skip the charting. Make store number and week inputs. Turn the SQL into scripts/query.sql."'} />
+          </label>
           <div className="opts">
             <label><input type="radio" checked={dest === 'folder'} onChange={() => setDest('folder')} /> This folder: <code>.github/skills/{name || '…'}</code></label>
             <label><input type="radio" checked={dest === 'personal'} onChange={() => setDest('personal')} /> All my folders: <code>~/.copilot/skills/{name || '…'}</code></label>

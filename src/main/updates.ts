@@ -5,7 +5,7 @@ import os from 'node:os'
 import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import { BRAND } from '../shared/brand'
-import { appBundlePath, compareVersions, gitlabAuthError, networkError, parseReleases, type ReleaseInfo, type UpdateCheck, type UpdateSource, type UpdateState } from '../shared/updates'
+import { appBundlePath, compareVersions, gitlabAuthError, launchOffer, networkError, parseReleases, type ReleaseInfo, type UpdateCheck, type UpdateSource, type UpdateState } from '../shared/updates'
 import type { PushEvent } from '../shared/api'
 
 const run = promisify(execFile)
@@ -14,6 +14,10 @@ interface Opts {
   push(e: PushEvent): void
   /** Token for a private GitLab release list (the AI Teammate GITLAB_TOKEN). */
   getToken(): string | undefined
+  /** Whether to check on launch (Settings → General). */
+  onLaunch(): boolean
+  skipped(): string
+  skip(version: string): void
 }
 
 const authHeaders = (src: UpdateSource, token?: string): Record<string, string> =>
@@ -149,18 +153,22 @@ export function registerUpdates(ipcMain: IpcMain, o: Opts): { checkInBackground(
 
   ipcMain.handle('checkUpdates', () => check())
   ipcMain.handle('updateState', () => state)
+  ipcMain.handle('skipUpdate', (_e, v: string) => { if (typeof v === 'string') o.skip(v) })
   ipcMain.handle('downloadUpdate', (_e, version: string) => download(version))
   ipcMain.handle('cancelUpdate', () => { abort?.abort(); return true })
   ipcMain.handle('installUpdate', () => install())
   ipcMain.handle('openRelease', (_e, url: string) => { if (/^https:\/\//.test(url)) void shell.openExternal(url) })
 
   return {
-    /** Quiet check shortly after launch; tells the renderer only when something newer exists. */
+    /** Quiet check shortly after launch; tells the renderer only when a release it hasn't been told to skip exists. */
     checkInBackground() {
-      if (!src || !app.isPackaged) return
+      if (!src || !app.isPackaged || !o.onLaunch()) return
       setTimeout(() => {
-        void check().then((c) => { if (c.newer.length) o.push({ type: 'updateAvailable', version: c.newer[0].version }) })
-      }, 15_000)
+        void check().then((c) => {
+          const r = launchOffer(c.newer, o.skipped())
+          if (r) o.push({ type: 'updateAvailable', version: r.version, name: r.name, notes: r.notes })
+        })
+      }, 5_000)
     }
   }
 }

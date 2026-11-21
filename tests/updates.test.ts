@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appBundlePath, compareVersions, parseReleases, parseVersion , gitlabAuthError, networkError, parseChangelog } from '../src/shared/updates'
+import { appBundlePath, compareVersions, parseReleases, parseVersion , gitlabAuthError, networkError, parseChangelog, launchOffer } from '../src/shared/updates'
 
 describe('update checks', () => {
   it('reads only this product\'s tags and compares numerically', () => {
@@ -55,5 +55,16 @@ describe('release check diagnostics and bundled notes', () => {
     expect(h.map((x) => x.version)).toEqual(['1.3.15', '1.3.14'])
     expect(h[0].notes).toBe('### Excel\n- New: tutorial and [site](https://example.com)')
     expect(h[1].notes).toBe('- Fix')
+  })
+})
+
+describe('launchOffer', () => {
+  const rel = (version: string) => ({ version, tag: `v${version}`, name: version, notes: '', date: '', url: '' })
+  it('offers the newest release unless the user skipped it or something newer', () => {
+    expect(launchOffer([], '')).toBeUndefined()
+    expect(launchOffer([rel('1.5.2'), rel('1.5.1')], '')?.version).toBe('1.5.2')
+    expect(launchOffer([rel('1.5.2')], '1.5.2')).toBeUndefined()
+    expect(launchOffer([rel('1.5.2')], '1.5.10')).toBeUndefined()
+    expect(launchOffer([rel('1.6.0'), rel('1.5.2')], '1.5.2')?.version).toBe('1.6.0')
   })
 })

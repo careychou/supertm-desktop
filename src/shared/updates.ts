@@ -15,6 +15,13 @@ export interface ReleaseInfo {
   dmgUrl?: string
 }
 
+/** The release the launch check should offer: the newest one, unless the user skipped it (or something newer). */
+export function launchOffer(newer: ReleaseInfo[], skipped: string): ReleaseInfo | undefined {
+  const top = newer[0]
+  if (!top) return undefined
+  return skipped && compareVersions(top.version, skipped) <= 0 ? undefined : top
+}
+
 export interface UpdateCheck {
   current: string
   /** Newest published version, even when it is not newer than this build. */

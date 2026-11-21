@@ -12,6 +12,7 @@ import type { Attachment } from '../engine/content'
 import type { AttachMeta } from './attach'
 import type { ExcelStatus } from './excel'
 import type { OfficeApp, OfficeStatus } from './office'
+import type { McpServerStatus } from './mcp'
 import type { FolderConfig, MarketPlugin, PluginResult, PluginsStatus, PluginUpdates } from './plugins'
 
 export type { Attachment, AttachMeta }
@@ -39,8 +40,9 @@ export type PushEvent =
   | { type: 'pluginsLog'; folder: string; line: string }
   | { type: 'pluginsOpen'; folder: string }
   | { type: 'update'; state: UpdateState }
-  | { type: 'updateAvailable'; version: string }
+  | { type: 'updateAvailable'; version: string; name?: string; notes?: string }
   | { type: 'importProgress'; phase: 'scan' | 'import'; done: number; total: number }
+  | { type: 'mcpStatus'; servers: McpServerStatus[] }
 
 export interface RegistryInfo { skills: Array<{ name: string; description: string; source: string }>; agents: Array<{ name: string; description: string; source: string }>; warnings: string[] }
 
@@ -78,7 +80,8 @@ export interface DeskApi {
   openPath(path: string, cwd: string, reveal?: boolean): Promise<{ ok: boolean; path: string; revealed?: boolean; error?: string }>
   loadItems(sessionId: string): Promise<unknown[]>
   /** Drafts a skill (SKILL.md + bundled files) from a chat's turns with the compaction model. */
-  draftSkill(sessionId: string, o: { turns?: number[]; name: string }): Promise<SkillDraft>
+  /** `instruction`: the user's own guidance for how to codify the turns. */
+  draftSkill(sessionId: string, o: { turns?: number[]; name: string; instruction?: string }): Promise<SkillDraft>
   scanSkill(md: string, files: SkillFileOut[]): Promise<SecretFinding[]>
   readSkillFile(source: string): Promise<string | null>
   addSkillFiles(cwd: string, taken: string[]): Promise<SkillFileDraft[]>
@@ -105,6 +108,8 @@ export interface DeskApi {
   /** Lists releases newer than this build (Settings → About). */
   checkUpdates(): Promise<UpdateCheck>
   updateState(): Promise<UpdateState>
+  /** Stops the launch check from offering this release (a newer one is still offered). */
+  skipUpdate(version: string): Promise<void>
   /** Downloads and verifies a release's macOS zip; progress arrives as `update` push events. */
   downloadUpdate(version: string): Promise<{ ok: boolean; error?: string }>
   cancelUpdate(): Promise<boolean>
@@ -135,6 +140,24 @@ export interface DeskApi {
   importExternal(kind: ExternalSource, root: string, ids: string[], dest?: string): Promise<SyncImportResult>
   /** Omit `cwd` for personal (~/.copilot) items only. */
   registryInfo(cwd?: string): Promise<RegistryInfo>
+  mcpStatus(): Promise<McpServerStatus[]>
+  mcpReload(): Promise<McpServerStatus[]>
+  /** Opens the browser to sign in; resolves when connected (rejects on failure, timeout or cancel). */
+  mcpSignIn(key: string): Promise<void>
+  mcpCancelSignIn(key: string): Promise<void>
+  mcpSignOut(key: string): Promise<void>
+  mcpReconnect(key: string): Promise<void>
+  /** Personal config files read, in order (later wins). */
+  mcpConfigFiles(): Promise<string[]>
+  /** Opens the personal MCP config in the default editor (creating it if missing); returns its path. */
+  mcpOpenConfig(): Promise<string>
+  /** Raw entry of a server in the app's own file (null if not there). */
+  mcpGetServer(name: string): Promise<Record<string, unknown> | null>
+  /** Adds or replaces (renaming from `oldName`) a server in the app's own file; rejects on an invalid entry or taken name. */
+  mcpSaveServer(name: string, entry: Record<string, unknown>, oldName?: string): Promise<McpServerStatus[]>
+  mcpRemoveServer(name: string): Promise<McpServerStatus[]>
+  /** Opens a config file a server came from. */
+  mcpOpenFile(file: string): Promise<void>
   onPush(cb: (e: PushEvent) => void): () => void
   /** Marketplace plugins installed into a working folder's .github/. */
   plugins: PluginsApi

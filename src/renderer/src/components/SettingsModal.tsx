@@ -8,8 +8,9 @@ import { SyncTab } from './SyncTab'
 import { UpdatesPanel } from './UpdatesPanel'
 import { Dialog } from './Dialog'
 import { Lbl } from './Info'
+import { McpTab } from './McpTab'
 
-type Tab = 'providers' | 'general' | 'office' | 'compaction' | 'skills' | 'sync' | 'about'
+type Tab = 'providers' | 'general' | 'office' | 'mcp' | 'compaction' | 'skills' | 'sync' | 'about'
 
 export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: string; folders: string[]; onClose(): void; initialTab?: Tab }) {
   const [s, setS] = useState<Settings | null>(null)
@@ -28,7 +29,7 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
     setGroups(r.groups ?? [])
     setHealth(r.error ? `✗ ${r.error}` : `✓ ${r.models.length} models from ${r.groups.filter((g) => !g.error).length} provider(s)`)
   }
-  const tabs: Array<[Tab, string]> = [['providers', 'Model providers'], ['general', 'General'], ['office', 'MS Office'], ['compaction', 'Memory compaction'], ['skills', 'Skills & agents'], ['sync', 'Sync sessions'], ['about', 'About']]
+  const tabs: Array<[Tab, string]> = [['providers', 'Model providers'], ['general', 'General'], ['office', 'MS Office'], ['mcp', 'MCP servers'], ['compaction', 'Memory compaction'], ['skills', 'Skills & agents'], ['sync', 'Sync sessions'], ['about', 'About']]
   const compactKnown = !s.compactModel || groups.some((g) => g.models.includes(s.compactModel))
   return (
     <Dialog id="settings" className="settings" onClose={onClose} head={
@@ -49,6 +50,12 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
               <select value={s.defaultMode} onChange={(e) => set('defaultMode', e.target.value)}>
                 <option value="autopilot">Autopilot — run shell, file and web tools without asking</option>
                 <option value="interactive">Interactive — ask before shell, file writes and web fetches</option>
+              </select>
+            </label>
+            <label><Lbl text="Check for a new release when the app starts" tip="A few seconds after launch the app looks for a newer release. If there is one, a banner offers to show its notes and install it; nothing is downloaded until you choose to. Settings → About → Check for updates always works, whatever this is set to." ex="On: after 1.5.2 is published, starting 1.5.1 shows “1.5.2 is available — See what's new & install”." />
+              <select value={s.checkUpdatesOnLaunch === false ? 'off' : 'on'} onChange={(e) => setS({ ...s, checkUpdatesOnLaunch: e.target.value === 'on' })}>
+                <option value="on">On — tell me when a new release is available (default)</option>
+                <option value="off">Off — I'll check in Settings → About</option>
               </select>
             </label>
             <div className="sub-h">Attachments: compress to save tokens and stay under the provider's request limit</div>
@@ -85,6 +92,7 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
             </div>
             <div className="row3">
               <label><Lbl text="Skill/agent description (chars)" tip="Skill and agent descriptions listed in the system prompt are clipped to this so the list stays compact. The full skill is still loaded when used. Applies to new or restarted chats." ex="At 250, a 600-character description is shortened, so put the key trigger words first." /><input type="number" min={50} step={50} value={s.descriptionChars} onChange={(e) => set('descriptionChars', Number(e.target.value))} /></label>
+              <label><Lbl text="MCP tool output (chars)" tip="Longest result an MCP server tool can return to the model; longer results are clipped with a note so the model can ask for less." ex="At 50000, a 200 KB JSON reply is cut to the first 50,000 characters." /><input type="number" min={1000} step={1000} value={s.mcpOutputChars} onChange={(e) => set('mcpOutputChars', Number(e.target.value))} /></label>
             </div>
           </div>
         )}
@@ -125,6 +133,7 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
         {tab === 'skills' && (
           <SkillsTab cwd={cwd} folders={folders} />
         )}
+        {tab === 'mcp' && <McpTab s={s} setS={setS} />}
         {tab === 'sync' && <SyncTab />}
         {tab === 'about' && <AboutTab onClose={onClose} />}
         {tab !== 'skills' && tab !== 'sync' && tab !== 'about' && (

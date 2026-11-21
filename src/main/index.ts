@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, clipboard, net, protocol, shell as eshell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, clipboard, net, protocol, safeStorage, session as esession, shell as eshell } from 'electron'
 import { pathToFileURL } from 'node:url'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -30,6 +30,8 @@ import type { ExportItem } from '../shared/export'
 import { registerUpdates } from './updates'
 import { registerExcel } from './excel'
 import { registerOffice } from './office'
+import { registerMcp } from './mcp'
+import { installExtraTrust } from './mcp/trust'
 import { existingPaths, linkAction, resolveLocal } from './filelinks'
 import { autoCompactDecision, estimateTokens, keepLastPlan, splitHistoryTurns, type CompactPlan } from '../engine/compact'
 
@@ -47,6 +49,8 @@ let plugins: ReturnType<typeof registerPlugins> | null = null
 let excel: ReturnType<typeof registerExcel> | null = null
 // Word and PowerPoint tools: documents and presentations open in the apps (live)
 let office: ReturnType<typeof registerOffice> | null = null
+// MCP servers from ~/.copilot/mcp-config.json and folder mcp.json files
+let mcp: ReturnType<typeof registerMcp> | null = null
 // open permission/ask prompts; Stop resolves a session's prompts with `cancel` so the run can unwind
 const pending = new Map<string, { sid: string; kind: 'permission' | 'ask'; resolve: (v: any) => void; cancel: unknown; perm?: string }>()
 
@@ -78,7 +82,7 @@ function getLive(id: string): Session {
     adapter: adapter(), cwd: row.cwd, model: row.model, history: store.loadMessages(id),
     maxConcurrency: settings.maxConcurrency, maxTurnsMain: settings.maxTurnsMain, maxTurnsSub: settings.maxTurnsSub, maxOutputTokens: settings.maxOutputTokens, reasoning: effortOf(row), memory: parseMemory(row.memories), folderMemory: folderMemoryOf(row.cwd),
     autoApprove: modeOf(row) === 'autopilot', stateDir: stateDirOf(id), compactModel: () => settings.compactModel,
-    extraTools: [...(plugins?.tools ?? []), ...(excel?.tools() ?? []), ...(office?.tools() ?? [])], extraPrompt: [excel?.prompt(), office?.prompt()].filter(Boolean).join('\n\n') || undefined,
+    extraTools: [...(plugins?.tools ?? []), ...(excel?.tools() ?? []), ...(office?.tools() ?? [])], dynamicTools: (agentTools) => mcp?.hub.tools(row.cwd, agentTools) ?? [], extraPrompt: [excel?.prompt(), office?.prompt()].filter(Boolean).join('\n\n') || undefined,
     hooks: {
       onEvent: (event) => {
         if (event.kind === 'usage') {
@@ -162,12 +166,12 @@ function registerIpc() {
   ipcMain.handle('addFolder', async () => {
     const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory', 'createDirectory'], message: 'Choose a working folder' })
     if (r.canceled) return null
-    store.addFolder(r.filePaths[0]); pushSessions()
+    store.addFolder(r.filePaths[0]); pushSessions(); mcp?.hub.reload()
     return r.filePaths[0]
   })
   ipcMain.handle('removeFolder', (_e, p: string) => {
     for (const s of store.listSessions().filter((x) => x.cwd === p)) { live.get(s.id)?.stop(); live.delete(s.id) }
-    store.removeFolder(p); pushSessions()
+    store.removeFolder(p); pushSessions(); mcp?.hub.reload()
   })
   ipcMain.handle('forkSession', (_e, id: string, turn: number) => {
     const src = store.getSession(id)
@@ -288,11 +292,11 @@ function registerIpc() {
     fs.writeFileSync(r.filePath, md)
     return r.filePath
   })
-  ipcMain.handle('draftSkill', async (_e, id: string, o: { turns?: number[]; name: string }) => {
+  ipcMain.handle('draftSkill', async (_e, id: string, o: { turns?: number[]; name: string; instruction?: string }) => {
     const row = store.getSession(id)
     if (!row) throw new Error(`no session ${id}`)
     const s = getLive(id)
-    return draftSkill({ items: store.loadUiItems(id) as ExportItem[], turns: o.turns, name: o.name, title: row.title, cwd: row.cwd, model: row.model, complete: (sys, user) => s.oneShot(sys, user) })
+    return draftSkill({ items: store.loadUiItems(id) as ExportItem[], turns: o.turns, name: o.name, instruction: o.instruction, title: row.title, cwd: row.cwd, model: row.model, complete: (sys, user) => s.oneShot(sys, user) })
   })
   ipcMain.handle('scanSkill', (_e, md: string, files: SkillFileOut[]) => findingsFor(md, files))
   ipcMain.handle('readSkillFile', (_e, source: string) => readSkillFile(source))
@@ -363,7 +367,9 @@ function registerIpc() {
       s = { ...s, defaultModel: re(s.defaultModel), compactModel: re(s.compactModel) }
       for (const [id, sess] of live) { const m = store.getSession(id)?.model; if (m) sess.setModel(m) }
     }
+    s = { ...s, skippedVersion: settings.skippedVersion }
     settings = s; saveSettings(s); currentRouter = null; setToolLimits(s)
+    mcp?.hub.reload()
     for (const [id, sess] of live) {
       const row = store.getSession(id)
       if (!row?.reasoning) sess.setReasoning(s.reasoning)
@@ -462,12 +468,36 @@ app.whenReady().then(() => {
   plugins = registerPlugins(ipcMain, { dataHome, push, folders: () => store.listFolders().map((f) => f.path) })
   excel = registerExcel(ipcMain, () => ({ enabled: settings.excelEnabled, confirm: settings.excelConfirm, backup: settings.excelBackup }))
   office = registerOffice(ipcMain, () => ({ enabled: settings.officeEnabled, confirm: settings.officeConfirm, track: settings.officeTrack, backup: settings.officeBackup }))
-  registerUpdates(ipcMain, { push, getToken: () => undefined }).checkInBackground()
+  const trust = installExtraTrust(esession.defaultSession, () => settings.extraCaFile)
+  mcp = registerMcp(ipcMain, {
+    dataHome, appName: BRAND.name, appVersion: app.getVersion(), homeDir: BRAND.homeDir,
+    fetch: (u, init) => net.fetch(String(u), init as RequestInit),
+    openExternal: (url) => eshell.openExternal(url), openFile: (f) => eshell.openPath(f),
+    sealer: safeStorage.isEncryptionAvailable() ? { seal: (v) => safeStorage.encryptString(v).toString('base64'), open: (v) => safeStorage.decryptString(Buffer.from(v, 'base64')) } : null,
+    push: (servers) => push({ type: 'mcpStatus', servers }),
+    folders: () => store.listFolders().map((f) => f.path),
+    enabled: () => settings.mcpEnabled, maxOutputChars: () => settings.mcpOutputChars,
+    explain: (err, cfg) => {
+      if (!/ERR_CERT|certificate/i.test(err) || !cfg.url) return undefined
+      let host = ''
+      try { host = new URL(cfg.url).hostname } catch { return undefined }
+      return trust.problem(host) ?? `${host}'s HTTPS certificate isn't trusted by macOS. If it's signed by a company certificate authority, set its PEM file under "Extra trusted certificates" below and click Save.`
+    }
+  })
+  app.on('child-process-gone', (_e, d) => {
+    if (d.type !== 'Utility' || d.serviceName !== 'network.mojom.NetworkService') return
+    console.warn('[net] network service restarted:', d.reason)
+    trust.reinstall()
+    setTimeout(() => mcp?.hub.retryFailed(), 1500)
+  })
+  registerUpdates(ipcMain, { push, getToken: () => undefined,
+    onLaunch: () => settings.checkUpdatesOnLaunch !== false, skipped: () => settings.skippedVersion ?? '',
+    skip: (v) => { settings = { ...settings, skippedVersion: v }; saveSettings(settings) } }).checkInBackground()
   createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
 })
 
-app.on('before-quit', () => { for (const s of live.values()) s.dispose(); plugins?.dispose() })
+app.on('before-quit', () => { for (const s of live.values()) s.dispose(); plugins?.dispose(); mcp?.dispose() })
 
 app.on('window-all-closed', () => {
   for (const s of live.values()) { s.stop(); s.dispose() }

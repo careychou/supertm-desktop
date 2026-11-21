@@ -128,7 +128,8 @@ export function scanSecrets(text: string): SecretFinding[] {
 }
 
 /** Prompt that turns a chat transcript into a reusable SKILL.md. */
-export function skillDraftPrompt(name: string, transcript: string, files: string[]): string {
+export function skillDraftPrompt(name: string, transcript: string, files: string[], instruction = ''): string {
+  const extra = instruction.trim()
   return [
     `Turn the chat below into a reusable agent skill named "${name}". Write the complete SKILL.md and nothing else (no code fences around it).`,
     '',
@@ -148,6 +149,7 @@ export function skillDraftPrompt(name: string, transcript: string, files: string
       ? `- These files are bundled with the skill; reference them by these relative paths and say when to run/use each:\n${files.map((f) => `  - ${f}`).join('\n')}`
       : '- No files are bundled; put any essential short commands inline.',
     '- Be concise: aim for under 150 lines.',
+    ...(extra ? ['', 'The user\'s instructions for this skill (follow them; they take priority over the format and rules above, except never include secrets):', '<instructions>', extra, '</instructions>'] : []),
     '',
     '<chat>',
     transcript,
