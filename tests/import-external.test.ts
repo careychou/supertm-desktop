@@ -42,13 +42,28 @@ function copilotFixture() {
 }
 
 describe('Import from GitHub Copilot', () => {
-  it('lists sessions with turns from the store and event logs, named from workspace.yaml', async () => {
+  it('lists sessions from the store index and workspace.yaml without reading event logs', async () => {
     const root = copilotFixture()
     expect(copilotRoot(path.join(root, 'session-state'))).toBe(root)
+    const d = path.join(root, 'session-state', 'new1')
+    jl(path.join(d, 'events.jsonl'), [{ type: 'user.message', data: { content: 'hi' } }])
+    fs.writeFileSync(path.join(d, 'workspace.yaml'), "id: new1\ncwd: /w/new\nname: 'Fresh ''chat'''\nupdated_at: 2026-01-09T00:00:00Z\n")
+    fs.mkdirSync(path.join(root, 'session-state', 'nolog'))
+    // an unreadable log proves the scan never opens event logs
+    fs.chmodSync(path.join(root, 'session-state', 's1', 'events.jsonl'), 0o000)
     const c = await scanCopilot(root)
-    expect(c.map((s) => s.id)).toEqual(['s1', 's2'])
-    expect(c[0]).toMatchObject({ title: 'Named chat', cwd: '/w/one', local: null, group: '/w/one', turns: 2 })
-    expect(c[1]).toMatchObject({ title: 'hello two', turns: 2 })
+    fs.chmodSync(path.join(root, 'session-state', 's1', 'events.jsonl'), 0o644)
+    expect(c.map((s) => s.id)).toEqual(['new1', 's1', 's2'])
+    expect(c[2]).toMatchObject({ title: 'hello two', turns: 2 })
+    expect(c[0]).toMatchObject({ title: "Fresh 'chat'", cwd: '/w/new', turns: 0 })
+    expect(c[1]).toMatchObject({ title: 'Named chat', cwd: '/w/one', local: null, group: '/w/one', turns: 0 })
+  })
+
+  it('reads the live store read-only and leaves it unchanged', async () => {
+    const root = copilotFixture()
+    const before = fs.statSync(path.join(root, 'session-store.db')).mtimeMs
+    expect((await scanCopilot(root)).length).toBe(2)
+    expect(fs.statSync(path.join(root, 'session-store.db')).mtimeMs).toBe(before)
   })
 
   it('imports with new UUIDs, keeps tool detail in the transcript and a compacted text history', async () => {
@@ -103,6 +118,20 @@ describe('Import from Claude Code', () => {
     const c = await scanClaude(path.join(tmp, 'claude'))
     expect(c).toHaveLength(1)
     expect(c[0]).toMatchObject({ id: f, title: 'My Claude chat', cwd: '/w/proj', turns: 1, local: null })
+    // a big log is listed from its start and end only (turns not counted); import still reads all of it
+    const big = path.join(proj, 'big.jsonl')
+    jl(big, [
+      { type: 'user', message: { role: 'user', content: 'big first ask' }, cwd: '/w/proj', timestamp: '2026-03-01T00:00:00Z' },
+      ...Array.from({ length: 400 }, (_, i) => ({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'x'.repeat(500) + i }] } })),
+      { type: 'user', message: { role: 'user', content: 'middle ask' } },
+      ...Array.from({ length: 400 }, (_, i) => ({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'y'.repeat(500) + i }] } })),
+      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'end' }] }, timestamp: '2026-03-02T00:00:00Z' }
+    ])
+    const c2 = await scanClaude(path.join(tmp, 'claude'))
+    expect(c2[0]).toMatchObject({ id: big, title: 'big first ask', cwd: '/w/proj', turns: 0, updated_at: Date.parse('2026-03-02T00:00:00Z') })
+    const rb = await importExternal(store, 'claude', path.join(tmp, 'claude'), [big], 'm2')
+    expect(store.loadMessages(rb.ids[0]).filter((m) => m.role === 'user')).toHaveLength(2)
+    fs.rmSync(big)
     const r = await importExternal(store, 'claude', path.join(tmp, 'claude'), [f, '/etc/passwd'], 'm2')
     expect(r).toMatchObject({ added: 1, skipped: 1 })
     const s = store.getSession(r.ids[0])!

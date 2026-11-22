@@ -105,46 +105,56 @@ export function copilotRoot(p: string): string {
   throw new Error(`No GitHub Copilot sessions in ${p}. Pick the folder that holds session-store.db and session-state (usually ~/.copilot).`)
 }
 
-function yaml(file: string): Record<string, string> {
+function parseYaml(text: string): Record<string, string> {
   const out: Record<string, string> = {}
-  try {
-    for (const l of fs.readFileSync(file, 'utf8').split('\n')) {
-      const m = /^(\w+):\s*(.*)$/.exec(l)
-      if (m) out[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2')
-    }
-  } catch { /* missing */ }
+  for (const l of text.split('\n')) {
+    const m = /^(\w+):\s*(.*)$/.exec(l)
+    if (m) out[m[1]] = m[2].replace(/^'(.*)'$/, (_, v) => v.replace(/''/g, "'")).replace(/^"(.*)"$/, '$1')
+  }
   return out
 }
+function yaml(file: string): Record<string, string> {
+  try { return parseYaml(fs.readFileSync(file, 'utf8')) } catch { return {} }
+}
+const yamlAsync = (file: string) => fs.promises.readFile(file, 'utf8').then(parseYaml, () => ({} as Record<string, string>))
 
-/** Copies the store (with its WAL) to a temp folder first: the live one may be open in Copilot or still syncing. */
+/** Runs `fn` over `items` with at most `n` in flight. */
+async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>): Promise<void> {
+  let i = 0
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) await fn(items[i++]) }))
+}
+
+/** Opens the live store read-only (one quick query, no copy). If that fails (locked, or no -shm on a read-only share), reads a temp copy. */
 function withCopilotDb<T>(root: string, fn: (db: DatabaseSync | null) => T): T {
   const src = path.join(root, 'session-store.db')
   if (!fs.existsSync(src)) return fn(null)
+  const run = (file: string, opts: { readOnly?: boolean }) => {
+    const db = new DatabaseSync(file, opts)
+    try {
+      const ok = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sessions'").get()
+      return { v: fn(ok ? db : null) }
+    } finally { db.close() }
+  }
+  let opened: { v: T } | null = null
+  try { opened = run(src, { readOnly: true }) } catch { /* fall back to a copy */ }
+  if (opened) return opened.v
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-import-'))
   try {
     for (const ext of ['', '-wal']) if (fs.existsSync(src + ext)) fs.copyFileSync(src + ext, path.join(tmp, 'session-store.db' + ext))
-    const db = new DatabaseSync(path.join(tmp, 'session-store.db'))
-    try {
-      const ok = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sessions'").get()
-      return fn(ok ? db : null)
-    } finally { db.close() }
+    return run(path.join(tmp, 'session-store.db'), {}).v
   } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
-}
-
-/** Counts typed prompts without parsing every line (event logs can be hundreds of MB). */
-async function countPrompts(file: string): Promise<number> {
-  let n = 0
-  const rl = readline.createInterface({ input: fs.createReadStream(file, { encoding: 'utf8' }), crlfDelay: Infinity })
-  for await (const l of rl) if (l.startsWith('{"type":"user.message"') && !l.includes('"source":"') && !l.includes('"agentId":"')) n++
-  return n
 }
 
 /** Reports done / total as sessions are read or imported, for a progress bar. */
 export type Progress = (done: number, total: number) => void
 
+/**
+ * Lists sessions from the store's index plus each small workspace.yaml (for renamed chats), so it stays quick when
+ * ~/.copilot is on a network drive (OneDrive): event logs are never read here. `turns` is 0 when not counted (event
+ * log only); the full chat, and any empty one, is read at import for the picked chats only.
+ */
 export async function scanCopilot(root: string, onProgress?: Progress): Promise<SyncCandidate[]> {
   const stateDir = path.join(root, 'session-state')
-  const dirs = new Set(fs.existsSync(stateDir) ? fs.readdirSync(stateDir).filter((d) => fs.existsSync(path.join(stateDir, d, 'events.jsonl'))) : [])
   const rows = withCopilotDb(root, (db) => {
     if (!db) return []
     const hasTurns = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'turns'").get()
@@ -155,26 +165,26 @@ export async function scanCopilot(root: string, onProgress?: Progress): Promise<
       : 'SELECT id, cwd, summary, created_at, updated_at, 0 AS n, NULL AS first FROM sessions'
     return db.prepare(sql).all() as Array<{ id: string; cwd: string | null; summary: string | null; created_at: string; updated_at: string; n: number; first: string | null }>
   })
-  const out = new Map<string, SyncCandidate>()
-  const add = async (id: string, r?: (typeof rows)[number]) => {
-    const w = yaml(path.join(stateDir, id, 'workspace.yaml'))
-    const events = dirs.has(id)
-    let turns = r?.n ?? 0
-    if (!turns && events) turns = await countPrompts(path.join(stateDir, id, 'events.jsonl'))
-    if (!turns) return
-    const firstLine = (r?.first ?? '').trim().split('\n')[0].slice(0, 80)
-    out.set(id, {
-      id, title: w.name || r?.summary || firstLine || 'Copilot session', cwd: w.cwd || r?.cwd || '', model: '',
-      updated_at: ms(w.updated_at, ms(r?.updated_at)), parent_id: null, turns, local: null, group: w.cwd || r?.cwd || '(no folder)'
-    })
-  }
-  const inDb = new Set(rows.map((r) => r.id))
-  const extra = [...dirs].filter((d) => !inDb.has(d))
-  const total = rows.length + extra.length
+  const dirs = fs.existsSync(stateDir) ? await fs.promises.readdir(stateDir) : []
+  const inDb = new Map(rows.map((r) => [r.id, r]))
+  const ids = [...new Set([...rows.map((r) => r.id), ...dirs])]
+  const out: SyncCandidate[] = []
   let done = 0
-  for (const r of rows) { await add(r.id, r); onProgress?.(++done, total) }
-  for (const d of extra) { await add(d); onProgress?.(++done, total) }
-  return [...out.values()].sort((a, b) => b.updated_at - a.updated_at)
+  // only small files are touched (a stat and workspace.yaml), many at a time: on a network drive the wait is per file, not per byte
+  await pool(ids, 16, async (id) => {
+    const r = inDb.get(id)
+    const dir = path.join(stateDir, id)
+    const events = await fs.promises.access(path.join(dir, 'events.jsonl')).then(() => true, () => false)
+    if (r?.n || events) {
+      const w = await yamlAsync(path.join(dir, 'workspace.yaml'))
+      const cwd = w.cwd || r?.cwd || ''
+      const firstLine = (r?.first ?? '').trim().split('\n')[0].slice(0, 80)
+      out.push({ id, title: w.name || r?.summary || w.summary || firstLine || 'Copilot session', cwd, model: '', updated_at: ms(w.updated_at, ms(r?.updated_at, ms(w.created_at))), parent_id: null, turns: r?.n ?? 0, local: null, group: cwd || '(no folder)' })
+    }
+    onProgress?.(++done, ids.length)
+  })
+  onProgress?.(ids.length, ids.length)
+  return out.sort((a, b) => b.updated_at - a.updated_at)
 }
 
 /** Copilot event log → chat. Sub-agent events and injected notifications are left out; the main thread is kept. */
@@ -233,6 +243,28 @@ const claudeUserText = (content: unknown): string => {
 const realPrompt = (e: any) => e.type === 'user' && !e.isMeta && !e.isSidechain && !e.isCompactSummary && (!e.origin?.kind || e.origin.kind === 'human')
   && (() => { const t = claudeUserText(e.message?.content).trim(); return !!t && !NOISE.test(t) })()
 
+const PEEK = 64 * 1024
+/** Whole lines from the first and last 64 KB of a file: enough for a session's folder, first prompt, title and times. */
+function peekLines(file: string): { lines: any[]; whole: boolean } {
+  const fd = fs.openSync(file, 'r')
+  try {
+    const size = fs.fstatSync(fd).size
+    const read = (pos: number, len: number) => { const b = Buffer.alloc(len); return b.subarray(0, fs.readSync(fd, b, 0, len, pos)).toString('utf8') }
+    const parse = (text: string, dropFirst: boolean, dropLast: boolean) => {
+      const ls = text.split('\n')
+      if (dropFirst) ls.shift()
+      if (dropLast) ls.pop()
+      return ls.flatMap((l) => { try { return l.trim() ? [JSON.parse(l)] : [] } catch { return [] } })
+    }
+    if (size <= 2 * PEEK) return { lines: parse(read(0, size), false, false), whole: true }
+    return { lines: [...parse(read(0, PEEK), false, true), ...parse(read(size - PEEK, PEEK), true, false)], whole: false }
+  } finally { fs.closeSync(fd) }
+}
+
+/**
+ * Lists sessions by reading only the start and end of each log, so it stays quick on a network drive.
+ * `turns` is counted for small logs and 0 (not counted) for large ones; import reads the picked chats in full.
+ */
 export async function scanClaude(p: string, onProgress?: Progress): Promise<SyncCandidate[]> {
   const out: SyncCandidate[] = []
   const files = claudeFiles(p)
@@ -240,20 +272,23 @@ export async function scanClaude(p: string, onProgress?: Progress): Promise<Sync
   for (const file of files) {
     onProgress?.(done++, files.length)
     let title = '', summary = '', first = '', cwd = '', start = 0, end = 0, turns = 0
-    for await (const e of lines(file)) {
+    let peek: ReturnType<typeof peekLines>
+    try { peek = peekLines(file) } catch { continue }
+    for (const e of peek.lines) {
       if (e.type === 'custom-title' && e.customTitle) title = e.customTitle
-      else if (e.type === 'summary' && e.summary) summary = e.summary
+      else if (e.type === 'summary' && e.summary) summary ||= e.summary
       if (e.timestamp) { const t = ms(e.timestamp); if (t) { start ||= t; end = Math.max(end, t) } }
       if (e.cwd && !cwd) cwd = e.cwd
       if (realPrompt(e)) { turns++; first ||= claudeUserText(e.message.content).trim().split('\n')[0].slice(0, 80) }
     }
-    if (!turns) continue
+    if (peek.whole && !turns) continue
     const proj = path.basename(path.dirname(file))
     out.push({
       id: file, title: title || summary || first || 'Claude session', cwd: cwd || proj, model: '', updated_at: end || fs.statSync(file).mtimeMs,
-      parent_id: null, turns, local: null, group: cwd || proj
+      parent_id: null, turns: peek.whole ? turns : 0, local: null, group: cwd || proj
     })
   }
+  onProgress?.(files.length, files.length)
   return out.sort((a, b) => b.updated_at - a.updated_at)
 }
 
