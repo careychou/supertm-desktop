@@ -17,10 +17,11 @@ It reads skills and agents from the same places Copilot does — `<folder>/.gith
 | 1 | [Install the app](#install) |
 | 2 | [Add a working folder](doc/tutorial.md#1-add-a-working-folder) |
 | 3 | [Connect a model: **Google Vertex AI** example](doc/tutorial.md#example-a-google-cloud-vertex-ai) · [**Azure OpenAI** example](doc/tutorial.md#example-b-azure-openai-or-azure-ai-foundry) |
-| 4 | [Chat with the agent](doc/tutorial.md#3-chat-with-the-agent) · [Work with Excel](doc/tutorial.md#work-with-excel) · [Word and PowerPoint](doc/tutorial.md#work-with-word-and-powerpoint) |
-| 5 | [Skills and agents per folder](doc/tutorial.md#4-skills-and-agents-per-folder) |
+| 4 | [Chat with the agent](doc/tutorial.md#3-chat-with-the-agent) · [Sub-agents](doc/tutorial.md#example-split-work-across-sub-agents) · [Work with Excel](doc/tutorial.md#work-with-excel) · [Word and PowerPoint](doc/tutorial.md#work-with-word-and-powerpoint) |
+| 5 | [Skills and agents per folder](doc/tutorial.md#4-skills-and-agents-per-folder) · [Turn a chat into a skill pack](doc/tutorial.md#turn-a-chat-into-a-skill-pack) |
 | 6 | [Memory compaction](doc/tutorial.md#5-keep-long-chats-small-memory-compaction) · [AI usage and cost](doc/tutorial.md#6-see-what-you-spend-ai-usage) |
 | 7 | [Move chats between Macs, or import from Copilot / Claude Code](doc/tutorial.md#7-move-chats-between-macs-sync-sessions) |
+| 8 | [Add tools with MCP servers](doc/tutorial.md#8-add-tools-with-mcp-servers) · [Tune the limits](doc/tutorial.md#9-tune-the-limits-general-settings) · [Updates](doc/tutorial.md#updating-to-a-newer-release) |
 
 <a href="doc/tutorial.md"><img src="doc/images/tutorial/03a-vertex-example.png" alt="Tutorial: connecting a Vertex AI provider" width="640"></a>
 

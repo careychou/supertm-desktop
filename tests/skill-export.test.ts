@@ -10,9 +10,9 @@ const tool = (name: string, args: object, ok = true): ExportItem => ({ t: 'tool'
 
 describe('skill names', () => {
   it('slugifies and rejects reserved prefixes', () => {
-    expect(skillName('Carey Weekly Sales Report!')).toBe('carey-weekly-sales-report')
+    expect(skillName('Jane Weekly Sales Report!')).toBe('jane-weekly-sales-report')
     expect(skillName('a'.repeat(100)).length).toBe(64)
-    expect(skillNameError('carey-x')).toBe('')
+    expect(skillNameError('jane-x')).toBe('')
     expect(skillNameError('')).toMatch(/Enter/)
   })
 })
@@ -63,8 +63,8 @@ describe('scanSecrets', () => {
 
 describe('finalizeSkillMd', () => {
   it('strips a fence and forces the name', () => {
-    expect(finalizeSkillMd('```markdown\n---\nname: other\ndescription: d\n---\n# T\n```', 'carey-x')).toBe('---\nname: carey-x\ndescription: d\n---\n# T\n')
-    expect(finalizeSkillMd('# T', 'carey-x')).toContain('name: carey-x\n')
+    expect(finalizeSkillMd('```markdown\n---\nname: other\ndescription: d\n---\n# T\n```', 'jane-x')).toBe('---\nname: jane-x\ndescription: d\n---\n# T\n')
+    expect(finalizeSkillMd('# T', 'jane-x')).toContain('name: jane-x\n')
   })
 })
 
@@ -74,22 +74,22 @@ describe('draft + write', () => {
     fs.writeFileSync(path.join(cwd, 'load.py'), 'print(1)')
     const items: ExportItem[] = [{ t: 'user', text: 'load data' }, tool('write_file', { path: 'load.py', content: 'print(1)' }), tool('write_file', { path: 'gone.py', content: '' })]
     let prompt = ''
-    const d = await draftSkill({ items, name: 'carey-load', title: 'T', cwd, model: 'm', complete: async (_s, u) => { prompt = u; return { text: '---\nname: x\ndescription: Load data.\n---\n# Load', model: 'cm' } } })
+    const d = await draftSkill({ items, name: 'jane-load', title: 'T', cwd, model: 'm', complete: async (_s, u) => { prompt = u; return { text: '---\nname: x\ndescription: Load data.\n---\n# Load', model: 'cm' } } })
     expect(prompt).toContain('scripts/load.py')
     expect(prompt).not.toContain('scripts/gone.py')
     expect(prompt).not.toContain('<instructions>')
-    await draftSkill({ items, name: 'carey-load', instruction: '  Make the store number an input.  ', title: 'T', cwd, model: 'm', complete: async (_s, u) => { prompt = u; return { text: '# x', model: 'cm' } } })
+    await draftSkill({ items, name: 'jane-load', instruction: '  Make the store number an input.  ', title: 'T', cwd, model: 'm', complete: async (_s, u) => { prompt = u; return { text: '# x', model: 'cm' } } })
     expect(prompt).toContain('<instructions>\nMake the store number an input.\n</instructions>')
     expect(prompt.indexOf('</instructions>')).toBeLessThan(prompt.indexOf('<chat>'))
-    expect(d.md).toContain('name: carey-load')
+    expect(d.md).toContain('name: jane-load')
     expect(d.files.map((f) => [f.target, f.exists])).toEqual([['scripts/load.py', true], ['scripts/gone.py', false]])
     const root = path.join(cwd, '.github', 'skills')
-    const dir = writeSkill(root, 'carey-load', d.md, [{ source: d.files[0].source!, target: d.files[0].target }])
+    const dir = writeSkill(root, 'jane-load', d.md, [{ source: d.files[0].source!, target: d.files[0].target }])
     expect(fs.readFileSync(path.join(dir, 'scripts', 'load.py'), 'utf8')).toBe('print(1)')
-    expect(() => writeSkill(root, 'carey-load', d.md, [])).toThrow(/already exists/)
+    expect(() => writeSkill(root, 'jane-load', d.md, [])).toThrow(/already exists/)
     expect(() => writeSkill(root, '../evil', d.md, [])).toThrow(/invalid/)
-    expect(() => writeSkill(root, 'carey-y', d.md, [{ source: d.files[0].source!, target: '../x' }])).toThrow(/invalid/)
-    expect(() => writeSkill(root, 'carey-z', d.md, [{ content: 'a', target: 'assets/a' }, { content: 'b', target: 'assets/a' }])).toThrow(/both named/)
+    expect(() => writeSkill(root, 'jane-y', d.md, [{ source: d.files[0].source!, target: '../x' }])).toThrow(/invalid/)
+    expect(() => writeSkill(root, 'jane-z', d.md, [{ content: 'a', target: 'assets/a' }, { content: 'b', target: 'assets/a' }])).toThrow(/both named/)
   })
   it('writes edited/inline content instead of copying, and scans it for secrets', () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'skx-'))
@@ -98,7 +98,7 @@ describe('draft + write', () => {
     expect(findingsFor('# x', files).map((f) => f.kind)).toEqual(['email address'])
     const edited = [{ target: 'scripts/q.sql', content: 'select 1' }, { target: 'scripts/inline-1.py', content: 'print(2)\n' }]
     expect(findingsFor('# x', edited)).toEqual([])
-    const dir = writeSkill(path.join(cwd, 'skills'), 'carey-q', '# x', edited)
+    const dir = writeSkill(path.join(cwd, 'skills'), 'jane-q', '# x', edited)
     expect(fs.readFileSync(path.join(dir, 'scripts', 'q.sql'), 'utf8')).toBe('select 1')
     expect(fs.readFileSync(path.join(cwd, 'q.sql'), 'utf8')).toContain('bob@')
     expect(fs.readFileSync(path.join(dir, 'scripts', 'inline-1.py'), 'utf8')).toBe('print(2)\n')

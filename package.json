@@ -9,6 +9,8 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "test": "vitest run",
+    "test:regression": "vitest run tests/regression",
+    "release:check": "npm run typecheck && vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "cli": "tsx src/cli/index.ts",
     "dist": "electron-vite build && electron-builder --mac",

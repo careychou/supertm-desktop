@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import { X509Certificate } from 'node:crypto'
+import { isIP } from 'node:net'
 import type { Session } from 'electron'
 
 const PEM = /-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g
@@ -34,7 +35,7 @@ export function chainProblem(chain: X509Certificate[], anchors: X509Certificate[
   const pinAt = chain.findIndex((c) => pins.has(c.fingerprint256))
   if (pinAt < 0) return `its certificate chain (${chain.map(cn).join(' → ')}) doesn't include any certificate in the trusted file (${anchors.map(cn).join(', ')})`
   const leaf = chain[0]
-  if (!leaf.checkHost(host) && !leaf.checkIP(host)) return `its certificate is for ${leaf.subjectAltName ?? cn(leaf)}, not ${host}`
+  if (!(isIP(host) ? leaf.checkIP(host) : leaf.checkHost(host))) return `its certificate is for ${leaf.subjectAltName ?? cn(leaf)}, not ${host}`
   if (new Date(leaf.validFrom) > now || new Date(leaf.validTo) < now) return `its certificate is valid only ${leaf.validFrom} – ${leaf.validTo}`
   for (let i = 0; i < pinAt; i++) if (!chain[i].verify(chain[i + 1].publicKey)) return `${cn(chain[i])} isn't signed by ${cn(chain[i + 1])}`
   return ''

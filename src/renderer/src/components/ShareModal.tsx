@@ -139,10 +139,10 @@ export function ShareModal({ session, onClose }: Props) {
         </> : <>
         <div className="skill-form">
           <label>Skill name
-            <input value={name} placeholder="e.g. carey-weekly-sales-report" onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '-'))} onBlur={() => setName(skillName(name))} disabled={!!busy} />
+            <input value={name} placeholder="e.g. jane-weekly-sales-report" onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '-'))} onBlur={() => setName(skillName(name))} disabled={!!busy} />
           </label>
           {name && nameErr && <div className="error">{nameErr}</div>}
-          <div className="muted small">Tip: start it with your name (e.g. <code>carey-</code>) to keep your skills apart from shared ones.</div>
+          <div className="muted small">Tip: start it with your name (e.g. <code>jane-</code>) to keep your skills apart from shared ones.</div>
           <label>Skill instructions <span className="muted small">(optional)</span>
             <textarea rows={3} value={instruction} disabled={!!busy} onChange={(e) => setInstruction(e.target.value)}
               placeholder={'How should the turns be codified? e.g. "Focus on the weekly sales pull only, skip the charting. Make store number and week inputs. Turn the SQL into scripts/query.sql."'} />

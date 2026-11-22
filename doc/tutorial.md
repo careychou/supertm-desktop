@@ -4,13 +4,15 @@ A short tour of SuperTM Desktop, from first launch to moving chats between Macs.
 
 1. [Add a working folder](#1-add-a-working-folder)
 2. [Connect a model provider](#2-connect-a-model-provider): [Vertex AI example](#example-a-google-cloud-vertex-ai), [Azure OpenAI example](#example-b-azure-openai-or-azure-ai-foundry)
-3. [Chat with the agent](#3-chat-with-the-agent), including [working with Excel](#work-with-excel) and [with Word and PowerPoint](#work-with-word-and-powerpoint)
-4. [Skills and agents per folder](#4-skills-and-agents-per-folder)
+3. [Chat with the agent](#3-chat-with-the-agent), including [sub-agents](#example-split-work-across-sub-agents), [working with Excel](#work-with-excel) and [with Word and PowerPoint](#work-with-word-and-powerpoint)
+4. [Skills and agents per folder](#4-skills-and-agents-per-folder), including [turning a chat into a skill pack](#turn-a-chat-into-a-skill-pack)
 5. [Keep long chats small: memory compaction](#5-keep-long-chats-small-memory-compaction)
 6. [See what you spend: AI usage](#6-see-what-you-spend-ai-usage)
 7. [Move chats between Macs: Sync sessions](#7-move-chats-between-macs-sync-sessions)
-8. [Which version am I running?](#8-which-version-am-i-running)
-9. [Keyboard shortcuts](#9-keyboard-shortcuts)
+8. [Add tools with MCP servers](#8-add-tools-with-mcp-servers)
+9. [Tune the limits (General settings)](#9-tune-the-limits-general-settings)
+10. [Which version am I running?](#10-which-version-am-i-running), including [the update banner](#updating-to-a-newer-release)
+11. [Keyboard shortcuts](#11-keyboard-shortcuts)
 
 ---
 
@@ -146,11 +148,30 @@ Type in the box at the bottom and press **Enter** (**Shift+Enter** adds a new li
 | **＋ Memory** | Session memory for this chat only: free-text notes and/or attached `.md` files (e.g. a shared chat export) |
 | **🗂 Folder memory** | Shows when the working folder has folder memory. Click it to edit (see below). |
 | **⇲ Compact** | Shows the estimated context size. Click it to compact the history (see §5). |
-| **⇪ Share** | Export this chat to Markdown |
+| **⇪ Share** | Export this chat as raw Markdown, or turn it into a skill pack (see [§4](#turn-a-chat-into-a-skill-pack)) |
 
 - **Thought** blocks show the model's reasoning. Click one to expand it.
 - Tool calls and sub-agents show inline while they run. You can keep typing; new prompts queue up behind the current turn.
 - Hover over a turn to **fork** a new chat from that point. The fork is filed under the original chat.
+
+### Example: split work across sub-agents
+
+![A chat where the main agent runs two sub-agents, one per region, then merges their answers](images/tutorial/11-subagents-chat.png)
+
+Ask for work that splits naturally and the main agent can hand each part to a **sub-agent**. Each sub-agent starts with a fresh context, works on its own, and returns one answer.
+
+Example prompt:
+
+> Give me the weekly sales summary for the North and South regions, one sub-agent per region.
+
+What you see:
+
+1. A **Thought** block with the plan ("run one sub-agent per region in parallel").
+2. One **SUB** card per sub-agent. The card shows the agent it used (here `analyst`, from `demo-app/.github/agents/analyst.agent.md`), the task it was given, its own thinking and its answer. A spinner shows while it runs, then **completed**. Click the header to fold it.
+3. Tool rows such as **Create scripts/region_summary.py** for files the agent wrote. Click one to see the details.
+4. The main agent's merged answer.
+
+Sub-agents run in parallel, up to **Max concurrent model calls** in Settings → General (see [§9](#9-tune-the-limits-general-settings)).
 
 ### Find a turn in a long chat
 
@@ -249,6 +270,31 @@ How it works inside: [office.md](office.md).
 
 The numbers next to each entry are *skills · agents*. To add a skill, put a folder with a `SKILL.md` under `.github/skills/` in the working folder. It shows up in the next chat. Details: [agent-framework.md](agent-framework.md).
 
+### Turn a chat into a skill pack
+
+When a chat worked out a task you will repeat, save it as a skill so the next chat can follow the same steps. Click **⇪ Share** under the chat box.
+
+![Share session, Export session as raw Markdown](images/tutorial/12-share-markdown.png)
+
+The dialog has two tabs:
+
+- **Export session as raw Markdown** saves the chat (all turns, or the turns you select) to a `.md` file, or copies it. Tick **Include tool calls & outputs** and **Include model thinking** to keep those too. Anyone can read the file, and any chat can attach it as **＋ Memory**.
+- **Export to skill pack** turns the chat into a reusable skill.
+
+![Export to skill pack: skill name, skill instructions and destination](images/tutorial/13-skill-pack-setup.png)
+
+1. **Skill name.** Lowercase words joined by dashes, e.g. `weekly-region-summary`. Starting it with your name (e.g. `jane-`) keeps your skills apart from shared ones.
+2. **Skill instructions** (optional). Tell the model how to codify the turns, for example: *"Make the regions and week-ending date inputs. Keep the sub-agent per region pattern and bundle the formatter script."*
+3. **Where to save.** **This folder** puts it in `<folder>/.github/skills/<name>`; **All my folders** puts it in `~/.copilot/skills/<name>`.
+4. Click **Generate & review**. A progress bar and timer show while the memory-compaction model drafts `SKILL.md` and collects the files:
+
+   ![Generating the skill, with a progress bar and elapsed time](images/tutorial/19-progress.png)
+
+![Review & edit the skill pack: file tree on the left, editable SKILL.md on the right](images/tutorial/14-skill-pack-review.png)
+
+5. **Review & edit.** The left side is the skill folder as a tree: `SKILL.md`, then `scripts/` and `assets/` with the files the chat wrote or ran. Ticked files go into the pack; scratch files (temp folders, inline snippets) start unticked. Click any file to view or edit it on the right, rename it, or use **+ Add files…** to bring in more. Edits change only the skill's copy, never the original file.
+6. Click **Save skill**. The app checks for secrets first, then writes the folder and shows **Show in Finder**. New chats in that folder can use the skill. **Regenerate** drafts it again, for example after you change the instructions.
+
 ## 5. Keep long chats small: memory compaction
 
 ![Settings → Memory compaction](images/tutorial/05-compaction.png)
@@ -320,7 +366,61 @@ Every dialog (Settings, AI usage, memory, share, compact, export, plugins) has t
 - **⤢ / ⤡** expands it to fill the window and shrinks it back.
 - Drag any **edge or corner** to resize it. The size is remembered for that dialog; double-click ⤢ to go back to the default size.
 
-## 8. Which version am I running?
+## 8. Add tools with MCP servers
+
+MCP (Model Context Protocol) servers give the agent extra tools, such as a company data service or a local program. Open **Settings (⚙) → MCP servers**.
+
+![Settings → MCP servers with one server waiting for sign-in and one connected](images/tutorial/15-mcp-servers.png)
+
+- **Use MCP servers** turns all of them on or off.
+- Each server shows its state: a green dot and **Connected**, an amber dot and **Sign-in needed**, or a red dot with the error. **▸ N tools** lists the tools it offers.
+- **Sign in** opens your browser for the company sign-in (for example your company's single sign-on). Sign in once; the app keeps and renews the sign-in for you.
+- **Edit**, **Turn off** and **Remove** change one server. **Reconnect** retries it. **Reload config** rereads the files after you edit them by hand.
+- The app reads the same files as GitHub Copilot CLI and VS Code: `~/.copilot/mcp-config.json` and `~/.supertm/mcp.json` for every chat (shown as *personal*), and a folder's `.vscode/mcp.json`, `.mcp.json` or `.github/mcp.json` for chats in that folder.
+
+### Add a server
+
+Click **+ Add server**. You can add as many as you need.
+
+![Add MCP server form with the Advanced section open](images/tutorial/16-mcp-editor.png)
+
+| Field | Example | Notes |
+|---|---|---|
+| **Name** | `team-knowledge` | Tools show to the model as `team-knowledge-<tool>` |
+| **Connection** | Remote — HTTP | Remote HTTP (most servers), Remote SSE (older servers), or Local (a program on this Mac, started with a command) |
+| **URL** | `https://mcp.example.test/knowledge/mcp` | For local servers you give a command and arguments instead |
+| **Headers** | `Authorization: Bearer ${MY_API_KEY}` | Only for servers that use an API key; `${VAR}` reads an environment variable |
+| **Sign-in client ID, scopes, redirect port** | blank | Leave blank unless the server's owner gives you values |
+| **Only these tools** | `search, get_page` | Blank offers all of the server's tools |
+
+Click **Add server**. It is saved right away and connects in the background. If the server needs a sign-in, your browser opens.
+
+### Network trust
+
+**Extra trusted certificates (PEM file)** adds certificates on top of the ones macOS trusts, for networks that inspect traffic. Connections use your Mac's proxy settings, including automatic proxy (PAC) files, so a server you can reach in the browser (on the VPN or through a proxy) works here too.
+
+In Interactive chats, MCP tool calls ask first. A sub-agent only gets the MCP tools its agent file allows (for example `team-knowledge/*`).
+
+## 9. Tune the limits (General settings)
+
+**Settings (⚙) → General** holds the defaults for new chats and the limits on what the agent sends and reads. Every setting has an **ⓘ**: hover or click it for what it does and an example.
+
+![Settings → General, with the ⓘ for read_file per call open](images/tutorial/17-limits-info.png)
+
+A few that people ask about:
+
+| Setting | Default | What it means |
+|---|---|---|
+| **Max output tokens** | 0 | 0 lets each model write as much as it supports. Set a number to cap replies. |
+| **Max concurrent model calls** | 20 | How many sub-agents (and other model calls) run at the same time |
+| **Max turns (main / sub-agent)** | 500 / 500 | How many model steps one prompt may take before the agent stops |
+| **read_file per call (chars)** | 50000 | Not a file size limit. A longer file is read in parts; the model is told where to continue. |
+| **web_fetch / MCP tool output (chars)** | 20000 / 50000 | How much of one page or one MCP result goes back to the model |
+| **Check for a new release when the app starts** | On | See [§10](#updating-to-a-newer-release) |
+
+Click **Save** to apply. Changes take effect in the next prompt.
+
+## 10. Which version am I running?
 
 Open **Settings (⚙) → About**. It shows the app version, the build (git commit and build date), the Electron, Chromium and Node.js versions, macOS, and the data folder. **Copy version info** puts all of it on the clipboard for a bug report. The macOS menu **SuperTM Desktop → About SuperTM Desktop** shows the version and build too.
 
@@ -332,9 +432,17 @@ The **Updates** section under About checks the GitHub release list each time you
 2. Click **Restart to install *version***. The app quits, replaces itself in Applications, and reopens. Running chats stop; your chats, settings and keys are kept.
 3. macOS asks once for keychain access. Choose **Always Allow**, or your saved keys show as blank until you do.
 
-The app also checks quietly about 15 seconds after launch. If a newer release exists, a **⬆** appears next to ⚙ in the sidebar; click it to open About. If the app can't replace itself (for example, it is not in a folder you can write to), About links to the release page so you can download the DMG instead.
+If the app can't replace itself (for example, it is not in a folder you can write to), About links to the release page so you can download the DMG instead.
 
-## 9. Keyboard shortcuts
+The app also checks when it starts (turn this off in **Settings → General → Check for a new release when the app starts**). If a newer release exists, a banner shows at the top of the window:
+
+![Update banner: See what's new & install, Later, Skip this version](images/tutorial/18-update-banner.png)
+
+- **See what's new & install** opens About with the release notes and the **Download** button.
+- **Later** hides the banner. The **⬆** next to ⚙ in the sidebar still shows that an update is waiting.
+- **Skip this version** stops offering that version when the app starts. You are still told about newer ones, and About can install it any time.
+
+## 11. Keyboard shortcuts
 
 | Keys | Action |
 |---|---|
