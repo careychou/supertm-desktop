@@ -1,5 +1,16 @@
 # Release notes
 
+## 1.4.3
+
+### Faster import from GitHub Copilot and Claude Code (Settings → Sync sessions)
+- The session list now comes from each tool's index only, so it shows up quickly even when `~/.copilot` or `~/.claude` is on a network drive such as OneDrive
+- GitHub Copilot: the session store is opened read-only instead of being copied first, and only each chat's small `workspace.yaml` is read. Event logs are no longer read just to count prompts
+- Claude Code: only the start and end of each log are read to get the title, folder, first prompt and dates
+- The full chat is read only for the sessions you pick. Sessions whose turns weren't counted show no turn count; an empty one is reported as skipped when imported
+
+### Fixes
+- MCP extra trusted certificates: a server given as an IP address now gets an accurate "doesn't match" error instead of "couldn't be read"
+
 ## 1.4.2
 
 ### MCP servers (Settings → MCP servers)
