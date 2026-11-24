@@ -246,3 +246,19 @@ Practical advice: keep the turns that contain the *current task state* (files be
 ## 12. Tests
 
 `tests/compact.test.ts` covers turn splitting (notifications and summary messages do not start turns), plan semantics (keep wins), normalization (duplicates, unknown indexes, leftovers), lexical clustering, incremental merge via `priorSummary`, `applyCompaction` ordering, `Session.compact` with non-contiguous keep/summarize/drop sets, the compaction model (usage events and fallback to the chat model) and every branch of `autoCompactDecision`. `tests/fork.test.ts` covers fork slicing, the live turn map and ordering helpers.
+
+## 13. Recall: searching turns after they are compacted
+
+Compaction shortens what the model sees. Recall keeps what was removed findable. The code is in `src/engine/recall.ts` (pure logic and the tool) and `src/main/store.ts` (the index).
+
+**Index.** Table `turn_index` holds one row per UI turn: the prompt (up to 2,000 characters), the final answer (up to 4,000), the names of the tools used, and a timestamp. Raw tool output, attachments and hint blocks are not stored. An FTS5 table `turn_fts` (`porter unicode61`) is kept in step by triggers. Rows are keyed by session and by the 0-based UI turn number taken from the turn map (§8), so a row keeps its number when earlier turns are removed.
+
+**When it is written.** After every completed run, just before a compaction (so the turns about to be removed are captured), on fork (rows up to the fork turn are copied), and in the background at startup and after an import for chats with no rows. That background pass also reads the saved transcript, so turns that were compacted before recall existed are indexed too (existing rows are never replaced). Indexing a chat again skips unchanged rows and never deletes the rows of removed turns. Deleting a chat deletes its rows.
+
+**The `recall` tool.** `recall(query, scope, limit, chat)`: `scope` is `session` (default), `folder` (chats with the same working folder) or `all`; `limit` is 5 by default and 10 at most. `chat` is the name, or part of the name, of another chat: the search then covers the chats with that name in any folder and `scope` is ignored. An exact name wins over partial matches; when no chat has that name the tool returns the recent chat names so the model can retry. The model takes the name from the prompt or from the session memory. The query is split into terms, common words are dropped, and the terms are joined with OR and ranked by BM25. A hit that is still in the live history is returned as a short pointer; any other hit is returned in full. A `# Recall` section in the system prompt says when to use it. The tool needs no permission because it reads only the app's own database.
+
+**Compaction note.** When recall is available, `applyCompaction` adds a `<recall_note>` after the summary with the total number of removed turns (`removedCount` adds up earlier notes on a repeated compaction).
+
+**Hints.** With the `recallHints` setting on, each new prompt is searched against the folder's chats (12 candidates). A candidate is kept only if at least two prompt terms and at least half of the prompt's terms appear in it; at most four are kept; the last 20 live turns of the current chat are skipped. The kept ones are attached as one line each in a `<recall_hints>` block **after** the prompt and attachments. The cached prefix is therefore unchanged. The block is stripped when turns are split for compaction, for the index and for text-to-speech.
+
+**Limits.** Search is by keyword, so a question worded differently from the original turn can miss; an empty result tells the model to try other keywords. Tool output is not indexed. The CLI has no store, so it has no recall.

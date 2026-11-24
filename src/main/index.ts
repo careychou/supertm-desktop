@@ -33,6 +33,7 @@ import { registerOffice } from './office'
 import { registerMcp } from './mcp'
 import { installExtraTrust } from './mcp/trust'
 import { existingPaths, linkAction, resolveLocal } from './filelinks'
+import { formatHints, pickHints, recallTool, RECALL_PROMPT, type RecallHit, type RecallScope } from '../engine/recall'
 import { autoCompactDecision, estimateTokens, keepLastPlan, splitHistoryTurns, type CompactPlan } from '../engine/compact'
 
 // GUI apps launched from Finder get a minimal PATH; give shell tools a usable one.
@@ -82,7 +83,8 @@ function getLive(id: string): Session {
     adapter: adapter(), cwd: row.cwd, model: row.model, history: store.loadMessages(id),
     maxConcurrency: settings.maxConcurrency, maxTurnsMain: settings.maxTurnsMain, maxTurnsSub: settings.maxTurnsSub, maxOutputTokens: settings.maxOutputTokens, reasoning: effortOf(row), memory: parseMemory(row.memories), folderMemory: folderMemoryOf(row.cwd),
     autoApprove: modeOf(row) === 'autopilot', stateDir: stateDirOf(id), compactModel: () => settings.compactModel,
-    extraTools: [...(plugins?.tools ?? []), ...(excel?.tools() ?? []), ...(office?.tools() ?? [])], dynamicTools: (agentTools) => mcp?.hub.tools(row.cwd, agentTools) ?? [], extraPrompt: [excel?.prompt(), office?.prompt()].filter(Boolean).join('\n\n') || undefined,
+    extraTools: [recallTool((q, scope, limit, chat) => recallSearch(id, q, scope, limit, 0, chat)), ...(plugins?.tools ?? []), ...(excel?.tools() ?? []), ...(office?.tools() ?? [])], dynamicTools: (agentTools) => mcp?.hub.tools(row.cwd, agentTools) ?? [], recall: true,
+    extraPrompt: [RECALL_PROMPT, excel?.prompt(), office?.prompt()].filter(Boolean).join('\n\n') || undefined,
     hooks: {
       onEvent: (event) => {
         if (event.kind === 'usage') {
@@ -118,10 +120,55 @@ const turnMapOf = (id: string, msgs: Message[]) => {
   return liveTurnMap(splitHistoryTurns(msgs).length, parseMap(row?.turn_map), row?.compact_offset ?? 0)
 }
 
+/** Recall search for a chat; hits in that chat are marked as still in the conversation or removed by compaction. */
+function recallSearch(id: string, query: string, scope: RecallScope, limit: number, skipRecent = 0, chat?: string): RecallHit[] | string {
+  const s = live.get(id)
+  const msgs = s ? s.history : store.loadMessages(id)
+  try { store.indexSession(id, msgs) } catch { /* search what is indexed */ }
+  const inCtx = turnMapOf(id, msgs)
+  const recent = new Set(skipRecent ? inCtx.slice(-skipRecent) : [])
+  let only: string[] | undefined
+  if (chat) {
+    const all = store.sessionsNamed(chat)
+    // A new chat is titled after its first prompt, so its own name often contains the name being asked for.
+    const others = all.filter((r) => r.id !== id)
+    const named = others.length ? others : all
+    if (!named.length) {
+      const titles = store.listSessions().slice(0, 30).map((r) => `"${r.title}"`).join(', ')
+      return `No chat is named "${chat}". Recent chats: ${titles}. Retry with one of these names, or search with scope "all".`
+    }
+    only = named.slice(0, 20).map((r) => r.id)
+    for (const sid of only) if (sid !== id) { try { store.indexSession(sid, live.get(sid)?.history) } catch { /* search what is indexed */ } }
+  }
+  return store.searchTurns(query, scope, id, limit + recent.size, only)
+    .filter((h) => !(h.current && recent.has(h.turn)))
+    .map((h) => (h.current ? { ...h, inContext: inCtx.includes(h.turn) } : h))
+    .slice(0, limit)
+}
+/** Turns the model has just seen are never hinted. */
+const HINT_SKIP_RECENT = 20
+/** Recall hints for a new prompt ('' when the setting is off or nothing matches well enough). */
+function recallHints(id: string, prompt?: string): string {
+  if (!settings.recallHints || !prompt?.trim()) return ''
+  try { return formatHints(pickHints(prompt, recallSearch(id, prompt, 'folder', 12, HINT_SKIP_RECENT) as RecallHit[])) } catch { return '' }
+}
+const indexTurns = (id: string, msgs?: Message[]) => { try { store.indexSession(id, msgs) } catch { /* the index is best-effort */ } }
+/** Indexes chats that have no recall rows yet (older chats, imports), a few at a time so startup is not held up. */
+function backfillRecall() {
+  let todo: Array<{ id: string; updated_at: number }> = []
+  try { todo = store.unindexedSessions() } catch { return }
+  const step = () => {
+    for (const r of todo.splice(0, 20)) { try { store.indexSession(r.id, undefined, r.updated_at); store.indexTranscript(r.id, r.updated_at) } catch { /* skip */ } }
+    if (todo.length) setTimeout(step, 50)
+  }
+  step()
+}
+
 /** Compacts a session per plan, records a marker in the UI log, and tells the renderer. */
 async function compactSession(id: string, plan: CompactPlan, auto = false) {
   const s = getLive(id)
   const map = turnMapOf(id, s.history)
+  indexTurns(id, s.history) // before the turns leave the history
   const r = await s.compact(plan)
   if (!r.summarized && !r.dropped) return r
   store.setTurnMap(id, r.kept.map((i) => map[i]))
@@ -151,9 +198,10 @@ async function run(id: string, s: Session, prompt?: string, atts: Attachment[] =
         catch (e: any) { push({ type: 'agent', sessionId: id, event: { kind: 'error', agentId: 'main', message: `Auto-compact failed: ${e.message}` } }) }
       }
     }
-    await s.send(prompt, atts, qid)
+    await s.send(prompt, atts, qid, recallHints(id, prompt))
   } finally {
     store.saveMessages(id, s.messages.slice(1))
+    indexTurns(id, s.messages.slice(1))
     store.touchSession(id)
     push({ type: 'busy', sessionId: id, busy: false })
     push({ type: 'tokens', sessionId: id, tokens: s.tokenEstimate })
@@ -188,6 +236,8 @@ function registerIpc() {
     store.createSession(row)
     store.saveMessages(row.id, sliceMessagesAtTurn(msgs, upto.length - 1))
     store.saveUiItems(row.id, sliceItemsAtTurn(store.loadUiItems(id) as Array<{ t: string }>, turn))
+    indexTurns(id, msgs)
+    try { store.copyTurnIndex(id, row.id, turn) } catch { /* the index is best-effort */ }
     pushSessions()
     return row
   })
@@ -401,6 +451,7 @@ function registerIpc() {
     const r = await importExternal(store, kind, root, ids, settings.defaultModel, dest, p)
     p(ids.length, ids.length)
     pushSessions()
+    backfillRecall()
     return r
   })
   ipcMain.handle('syncScan', (_e, dir: string) => { const file = resolveSyncFile(dir); return { file, ...scanSessions(store, file) } })
@@ -408,7 +459,10 @@ function registerIpc() {
     // an overwritten chat must not keep running on its old history
     for (const p of picks) if (p.choice === 'overwrite') { const l = live.get(p.id); if (l?.isBusy) throw new Error('A chat you are overwriting is still running; stop it first.'); l?.dispose(); live.delete(p.id) }
     const r = importSessions(store, file, picks, stateDirOf, dest)
+    // an overwritten chat has a new history: its old recall rows no longer describe it
+    for (const p of picks) if (p.choice === 'overwrite') { try { store.clearTurnIndex(p.id) } catch { /* best-effort */ } }
     pushSessions()
+    backfillRecall()
     return r
   })
   ipcMain.handle('registryInfo', (_e, cwd?: string) => {
@@ -464,6 +518,7 @@ app.whenReady().then(() => {
   settings = loadSettings()
   setToolLimits(settings)
   store = new Store(dataHome)
+  setTimeout(backfillRecall, 3000)
   registerIpc()
   plugins = registerPlugins(ipcMain, { dataHome, push, folders: () => store.listFolders().map((f) => f.path) })
   excel = registerExcel(ipcMain, () => ({ enabled: settings.excelEnabled, confirm: settings.excelConfirm, backup: settings.excelBackup }))

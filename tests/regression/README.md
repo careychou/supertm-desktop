@@ -24,6 +24,7 @@ npm run release:check   # typecheck + every test (unit + regression)
 
 | Release | Feature | Covered by |
 |---|---|---|
+| 1.4.4 | Recall: turn index, `recall` tool, search another chat by name, recall hints, compaction note | `recall.test.ts`, `compact.test.ts`, `regression/v1.4.x.test.ts` |
 | 1.4.3 | Import list from index only (no event logs, Claude head/tail, read-only store) | `import-external.test.ts` |
 | 1.4.2 | Several MCP servers: add/rename/disable/remove, form ↔ entry | `mcp.test.ts` (mcp config) |
 | 1.4.2 | MCP browser sign-in, tools, re-sign-in | `mcp.test.ts` (McpHub OAuth) |

@@ -22,7 +22,7 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
     void window.desk.listModels().then((r) => setGroups(r.groups ?? []))
   }, [cwd])
   if (!s) return null
-  const set = (k: keyof Settings, v: string | number) => setS({ ...s, [k]: v })
+  const set = (k: keyof Settings, v: string | number | boolean) => setS({ ...s, [k]: v })
   const testAll = async () => {
     await window.desk.saveSettings(s)
     const r = await window.desk.listModels()
@@ -121,6 +121,12 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
               <label><Lbl text="Threshold (tokens)" tip="Chats larger than this become candidates for compaction." ex="At 80000, a chat at ~80k tokens gets a compact suggestion (or auto-compacts, if enabled)." /><input type="number" min={5000} step={5000} value={s.compactThreshold} onChange={(e) => set('compactThreshold', Number(e.target.value))} /></label>
               <label><Lbl text="Keep last N turns verbatim" tip="The most recent N turns are never summarized, so the model keeps exact details of what you were just doing." ex="At 2, your last two prompts and replies stay word-for-word; everything older becomes a summary." /><input type="number" min={0} max={20} value={s.compactKeepRecent} onChange={(e) => set('compactKeepRecent', Number(e.target.value))} /></label>
             </div>
+            <label><Lbl text="Recall hints" tip="Every turn is kept in a searchable index, even after compaction removes it from the chat, and the agent can search it with its recall tool. With hints on, each new prompt is also matched against earlier turns of chats in the same folder and up to four short pointers are attached after the prompt. Nothing is attached when no earlier turn matches well." ex="You ask 'what retry limit did we pick?' 60 turns later: a hint points to the turn where it was decided, and the agent reads it with recall." />
+              <select value={s.recallHints ? 'on' : 'off'} onChange={(e) => set('recallHints', e.target.value === 'on')}>
+                <option value="on">On — attach pointers to matching earlier turns</option>
+                <option value="off">Off — the agent searches only when it decides to</option>
+              </select>
+            </label>
             <div className="sub-h">Auto-compact rules (when Long chats = Auto)</div>
             <div className="row3">
               <label><Lbl text="Wait until idle (minutes)" tip="Auto-compact only after the chat has had no model call for this long, so the provider's prompt cache has already expired and isn't wasted. 0 = compact immediately." ex="At 5, a chat you are actively using isn't compacted until you pause for 5 minutes." /><input type="number" min={0} max={240} value={s.compactIdleMinutes} onChange={(e) => set('compactIdleMinutes', Number(e.target.value))} /></label>

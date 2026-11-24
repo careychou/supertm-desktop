@@ -24,6 +24,8 @@ export interface Settings extends AttachLimits, ToolLimits {
   autoCompact: 'off' | 'suggest' | 'auto'
   compactThreshold: number
   compactKeepRecent: number
+  /** Attach short pointers to matching earlier turns after each new prompt (the recall tool works either way). */
+  recallHints: boolean
   /** Model used to summarize and cluster turns ('' = the chat's own model). */
   compactModel: string
   /** Auto mode: wait until the chat has been idle this long (prompt cache expired) before compacting; 0 = compact as soon as over the threshold. */
@@ -78,7 +80,7 @@ export function loadSettings(): Settings {
   const first: ProviderEntry = v.project
     ? { id: 'default', name: BRAND.vertexProviderName, kind: 'vertex', baseUrl: '', apiKey: '', project: v.project, location: v.location, credentialsPath: '', models: [...v.models], visionModel: v.visionModel, cacheTtl: '5m' }
     : { id: 'default', name: BRAND.defaultProviderName, kind: 'openai', baseUrl: d.baseUrl, apiKey: d.apiKey }
-  const defaults: Settings = { providers: [first], defaultModel: 'anthropic/claude-sonnet-5', defaultCwd: os.homedir(), maxConcurrency: 20, maxTurnsMain: 500, maxTurnsSub: 500, maxOutputTokens: 0, ...DEFAULT_TOOL_LIMITS, reasoning: 'medium', defaultMode: 'autopilot', autoCompact: 'suggest', compactThreshold: 80000, compactKeepRecent: 2, compactModel: BRAND.defaultCompactModel, compactIdleMinutes: 5, compactHardLimit: 120000, compactMinGain: 20000, ...DEFAULT_LIMITS, requestMaxMB: 20, imageTurns: 4, pricingPath: '', dailyBudget: 0, excelEnabled: true, excelConfirm: 'ask', excelBackup: true, officeEnabled: true, officeConfirm: 'ask', officeTrack: false, officeBackup: true, mcpEnabled: true, checkUpdatesOnLaunch: true, skippedVersion: '', extraCaFile: BRAND.extraCaFile }
+  const defaults: Settings = { providers: [first], defaultModel: 'anthropic/claude-sonnet-5', defaultCwd: os.homedir(), maxConcurrency: 20, maxTurnsMain: 500, maxTurnsSub: 500, maxOutputTokens: 0, ...DEFAULT_TOOL_LIMITS, reasoning: 'medium', defaultMode: 'autopilot', autoCompact: 'suggest', compactThreshold: 80000, compactKeepRecent: 2, recallHints: true, compactModel: BRAND.defaultCompactModel, compactIdleMinutes: 5, compactHardLimit: 120000, compactMinGain: 20000, ...DEFAULT_LIMITS, requestMaxMB: 20, imageTurns: 4, pricingPath: '', dailyBudget: 0, excelEnabled: true, excelConfirm: 'ask', excelBackup: true, officeEnabled: true, officeConfirm: 'ask', officeTrack: false, officeBackup: true, mcpEnabled: true, checkUpdatesOnLaunch: true, skippedVersion: '', extraCaFile: BRAND.extraCaFile }
   try {
     const raw = JSON.parse(fs.readFileSync(file(), 'utf8'))
     const open = (enc?: string): string | undefined => {

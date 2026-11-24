@@ -1,5 +1,15 @@
 # Release notes
 
+## 1.4.4
+
+### Recall: find earlier turns again (Settings → Memory compaction → Recall hints)
+- Every turn of every chat (your prompt, the final answer and the names of the tools used) is now kept in a searchable index in the app's database. A turn stays searchable after compaction removes it from the chat
+- The agent has a new `recall` tool. It searches this chat, the chats of the same folder, or all chats, and reads back the matching turns in full
+- **Search another chat by name:** name a chat in your prompt or in the session memory and the agent searches that chat, in any folder. If no chat has that name, it lists the recent chat names
+- After a compaction the summary tells the agent how many turns were removed and that it can search them
+- **Recall hints** (on by default): when a new prompt matches earlier turns well, up to four one-line pointers are attached after the prompt. They sit at the end of the request, so the prompt cache is not affected. Nothing is attached when the match is weak
+- Existing chats are indexed in the background a few seconds after the app starts. Imported chats are indexed too. Turns that were compacted away before this version are indexed from the saved transcript
+
 ## 1.4.3
 
 ### Faster import from GitHub Copilot and Claude Code (Settings → Sync sessions)

@@ -17,12 +17,14 @@ export function textOf(content: string | ContentPart[] | null | undefined): stri
 
 const attr = (s: string) => s.replace(/"/g, "'")
 
-/** Builds user content: prompt + inlined documents as text, then each image with a short caption. */
-export function buildUserContent(prompt: string, atts: Attachment[] = []): string | ContentPart[] {
+/** Builds user content: prompt + inlined documents as text (+ optional recall hints), then each image with a short caption. */
+export function buildUserContent(prompt: string, atts: Attachment[] = [], hints = ''): string | ContentPart[] {
   const docs = atts.filter((a): a is Extract<Attachment, { kind: 'text' }> => a.kind === 'text')
   const imgs = atts.filter((a): a is Extract<Attachment, { kind: 'image' }> => a.kind === 'image')
   let text = prompt.trim() || (atts.length ? 'Please take a look at the attached file(s).' : '')
   for (const d of docs) text += `\n\n<attachment name="${attr(d.name)}"${d.note ? ` note="${attr(d.note)}"` : ''}>\n${d.text}\n</attachment>`
+  // recall hints go last, next to the prompt, so the cached prefix of the request is unchanged
+  if (hints && text) text += `\n\n${hints}`
   if (!imgs.length) return text
   const parts: ContentPart[] = [{ type: 'text', text }]
   for (const i of imgs) {

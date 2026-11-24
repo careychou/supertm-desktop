@@ -10,7 +10,7 @@ import { ShellManager } from './tools/shell'
 import { closeSessionDb } from './tools/sql'
 import { buildMainSystem } from './prompt'
 import type { Memory } from '../shared/memory'
-import { applyCompaction, complete, clusterTurns, estimateTokens, planTurns, priorSummary, splitHistoryTurns, summarizeTurns, type CompactPlan } from './compact'
+import { applyCompaction, complete, clusterTurns, estimateTokens, planTurns, priorSummary, removedCount, splitHistoryTurns, summarizeTurns, type CompactPlan } from './compact'
 
 export interface SessionOptions {
   adapter: ModelAdapter
@@ -41,6 +41,8 @@ export interface SessionOptions {
   dynamicTools?: (agentTools?: string[]) => ToolDef[]
   /** Extra guidance appended to the main agent's system prompt. */
   extraPrompt?: string
+  /** True when the host provides a recall tool: compaction then notes that removed turns can be searched. */
+  recall?: boolean
 }
 
 /** agentId used for usage events from compaction calls. */
@@ -106,9 +108,10 @@ export class Session {
    * Sends a user prompt (or, with no prompt, just delivers pending notifications) and runs the main loop.
    * While a run is in progress the prompt is queued instead: it joins the same conversation before the
    * next model call (after the current tool results), or starts the next run if the agent has just answered.
+   * `hints` (recall hints) are appended after the prompt.
    */
-  async send(prompt?: string, attachments: Attachment[] = [], qid?: string): Promise<{ status: 'completed' | 'failed' | 'cancelled' | 'queued'; text: string }> {
-    if (prompt || attachments.length) this.queue.push({ qid, content: buildUserContent(prompt ?? '', attachments) as Message['content'] })
+  async send(prompt?: string, attachments: Attachment[] = [], qid?: string, hints = ''): Promise<{ status: 'completed' | 'failed' | 'cancelled' | 'queued'; text: string }> {
+    if (prompt || attachments.length) this.queue.push({ qid, content: buildUserContent(prompt ?? '', attachments, hints) as Message['content'] })
     if (this.busy) return { status: 'queued', text: '' }
     this.busy = true
     const controller = this.manager.registerMain(MAIN_ID)
@@ -224,7 +227,7 @@ export class Session {
       const keptIdx = kept.map((t) => t.index)
       if (!summarized.length && !dropped.length) return { before, after: before, summarized: 0, dropped: 0, summary: '', model: '', kept: keptIdx, compacted: [] as number[] }
       const { text: summary, model } = await this.withCompactModel(async (a, m) => ({ text: await summarizeTurns(a, m, summarized, priorSummary(this.history), signal) }))
-      const next = applyCompaction(this.history, summary, keptIdx)
+      const next = applyCompaction(this.history, summary, keptIdx, this.o.recall ? removedCount(this.history) + summarized.length + dropped.length : 0)
       this.messages.splice(1, this.messages.length - 1, ...next)
       return { before, after: this.tokenEstimate, summarized: summarized.length, dropped: dropped.length, summary, model, kept: keptIdx, compacted: [...summarized, ...dropped].map((t) => t.index) }
     } finally { this.busy = false }

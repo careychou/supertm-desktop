@@ -15,6 +15,10 @@ import { loadSettings, saveSettings, setSettingsDir } from '../../src/main/setti
 import { skillFiles } from '../../src/main/skill-export'
 import { RESERVED_PREFIXES, skillDraftPrompt, skillNameError } from '../../src/shared/skill-export'
 import type { ExportItem } from '../../src/shared/export'
+import { Store } from '../../src/main/store'
+import { applyCompaction } from '../../src/engine/compact'
+import { formatHints, pickHints } from '../../src/engine/recall'
+import type { Message } from '../../src/engine/types'
 
 const certs = path.join(__dirname, '..', 'fixtures', 'certs')
 const ca = readBundle(path.join(certs, 'ca.pem'))
@@ -96,5 +100,25 @@ describe('1.4.0 — export a chat as a skill', () => {
     const items: ExportItem[] = [{ t: 'user', text: 'go' }, tool({ path: 'load.py', content: 'x' }), tool({ path: path.join(venv, 'x.py'), content: 'x' })]
     const f = skillFiles(items, undefined, cwd)
     expect(f.map((x) => [path.basename(x.source!), x.suggested])).toEqual([['load.py', true], ['x.py', false]])
+  })
+})
+
+describe('1.4.x — recall of earlier turns', () => {
+  it('recall hints are on by default', () => {
+    setSettingsDir(fs.mkdtempSync(path.join(os.tmpdir(), 'reg-settings-')))
+    expect(loadSettings().recallHints).toBe(true)
+  })
+  it('a turn removed by compaction is still found, and the model is told it can search', () => {
+    const store = new Store(fs.mkdtempSync(path.join(os.tmpdir(), 'reg-recall-')))
+    store.createSession({ id: 'a', title: 'a', cwd: '/w', model: 'm', created_at: 1, updated_at: 1, parent_id: null, fork_turn: null })
+    const hist: Message[] = [{ role: 'user', content: 'Choose the retry limit' }, { role: 'assistant', content: 'Retry limit is 7.' }, { role: 'user', content: 'Ship it' }, { role: 'assistant', content: 'Shipped.' }]
+    store.saveMessages('a', hist); store.indexSession('a')
+    const next = applyCompaction(hist, 'They chose a limit.', [1], 1)
+    store.setTurnMap('a', [1]); store.saveMessages('a', next); store.indexSession('a')
+    expect(next[0].content as string).toContain('recall')
+    const hits = store.searchTurns('retry limit', 'session', 'a')
+    expect(hits[0]).toMatchObject({ turn: 0, answer: 'Retry limit is 7.' })
+    expect(formatHints(pickHints('what retry limit did we choose', hits.map((h) => ({ ...h, inContext: false }))))).toContain('removed by compaction')
+    expect(formatHints(pickHints('write a haiku about retry', hits))).toBe('')
   })
 })

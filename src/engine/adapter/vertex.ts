@@ -9,6 +9,7 @@ import { OpenAIAdapter } from './openai'
 import { VertexAuth } from './vertex-auth'
 import { anthropicDeltas, toAnthropic, type AnthropicTtl } from './anthropic'
 import { parseVertexModels, planSpeech, speechPrompt, type VertexModel } from '../../shared/providers'
+import { stripHints } from '../recall'
 import { sendWithOutputRetry } from '../limits'
 
 export interface VertexConfig {
@@ -140,7 +141,7 @@ export class VertexAdapter implements ModelAdapter {
    */
   private async *speech(m: VertexModel, req: ChatRequest, signal: AbortSignal): AsyncIterable<Delta> {
     const last = [...req.messages].reverse().find((x) => x.role === 'user')
-    const plan = planSpeech(textOf(last?.content), m.tts!.voice)
+    const plan = planSpeech(stripHints(textOf(last?.content)), m.tts!.voice)
     const text = plan.text
     if (!text) throw new Error(`${m.id} reads text aloud: type the text (you can add a style, e.g. "Say warmly: …")`)
     const [pub, slug] = m.id.includes('/') ? [m.id.slice(0, m.id.indexOf('/')), m.id.slice(m.id.indexOf('/') + 1)] : ['google', m.id]

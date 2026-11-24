@@ -1,6 +1,7 @@
 import type { Message, ModelAdapter } from './types'
 import { COMPACT_TAG, isRealUser } from '../shared/fork'
 import { IMAGE_TOKENS, textOf } from './content'
+import { RECALL_NOTE_RE, recallNote, stripHints } from './recall'
 
 export interface Turn {
   /** 0-based index among the turns still in the live history. */
@@ -41,14 +42,15 @@ export const estimateTokens = (messages: Message[]) =>
 export function priorSummary(history: Message[]): string {
   const m = history[0]
   if (m?.role !== 'user' || typeof m.content !== 'string' || !m.content.startsWith(COMPACT_TAG)) return ''
-  return m.content.slice(COMPACT_TAG.length).replace(END_TAG, '').trim()
+  const end = m.content.indexOf(END_TAG)
+  return m.content.slice(COMPACT_TAG.length, end < 0 ? undefined : end).trim()
 }
 
 /** Splits a history (no system message) into turns; each starts at a real user message. */
 export function splitHistoryTurns(history: Message[]): Turn[] {
   const turns: Turn[] = []
   for (const m of history) {
-    if (isRealUser(m)) turns.push({ index: turns.length, messages: [m], user: textOf(m.content), answer: '', tools: [] })
+    if (isRealUser(m)) turns.push({ index: turns.length, messages: [m], user: stripHints(textOf(m.content)), answer: '', tools: [] })
     else if (turns.length) turns[turns.length - 1].messages.push(m)
   }
   for (const t of turns) {
@@ -145,12 +147,22 @@ export async function summarizeTurns(adapter: ModelAdapter, model: string, turns
   return text.trim()
 }
 
-/** Builds the compacted history: [summary, ack, ...kept turns verbatim in original order]. Pure. */
-export function applyCompaction(history: Message[], summary: string, keep: number[]): Message[] {
+/** How many turns earlier compactions removed, as recorded in the summary message's recall note. */
+export function removedCount(history: Message[]): number {
+  const m = history[0]
+  if (m?.role !== 'user' || typeof m.content !== 'string' || !m.content.startsWith(COMPACT_TAG)) return 0
+  return Number(RECALL_NOTE_RE.exec(m.content)?.[1] ?? 0)
+}
+
+/**
+ * Builds the compacted history: [summary, ack, ...kept turns verbatim in original order]. Pure.
+ * With `removed` (total turns no longer in the history) the summary message ends with a note that they can be searched with recall.
+ */
+export function applyCompaction(history: Message[], summary: string, keep: number[], removed = 0): Message[] {
   const k = new Set(keep)
   const recent = splitHistoryTurns(history).filter((t) => k.has(t.index)).flatMap((t) => t.messages)
   const head: Message[] = summary.trim()
-    ? [{ role: 'user', content: `${COMPACT_TAG}\nSummary of the earlier conversation (older turns were compacted):\n\n${summary.trim()}\n${END_TAG}` }, { role: 'assistant', content: COMPACT_ACK }]
+    ? [{ role: 'user', content: `${COMPACT_TAG}\nSummary of the earlier conversation (older turns were compacted):\n\n${summary.trim()}\n${END_TAG}${removed > 0 ? `\n${recallNote(removed)}` : ''}` }, { role: 'assistant', content: COMPACT_ACK }]
     : []
   return [...head, ...recent]
 }

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { autoCompactDecision, applyCompaction, clusterLexical, keepLastPlan, normalizeClusters, planTurns, priorSummary, splitHistoryTurns, clusterTurns } from '../src/engine/compact'
+import { autoCompactDecision, applyCompaction, clusterLexical, keepLastPlan, normalizeClusters, planTurns, priorSummary, splitHistoryTurns, clusterTurns, removedCount } from '../src/engine/compact'
 import { Session } from '../src/engine/engine'
 import { COMPACT_TAG, sliceMessagesAtTurn } from '../src/shared/fork'
 import type { ChatRequest, Delta, Message, ModelAdapter } from '../src/engine/types'
@@ -72,6 +72,21 @@ describe('compaction', () => {
     expect(r.after).toBeLessThan(r.before)
     expect(s.history).toHaveLength(4)
     expect(s.messages[0].role).toBe('system')
+  })
+
+  it('with recall on, the summary notes how many turns were removed, across repeated compactions, and hints ride on the prompt', async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'cmp-'))
+    const fake = new Fake(() => 'SUM')
+    const s = new Session({ adapter: fake, cwd, model: 'm', home: path.join(cwd, 'h'), history: hist, recall: true, hooks: { onEvent() {}, requestPermission: async () => 'allow', askUser: async () => '' } })
+    await s.compact({ keep: [3], summarize: [0, 2] })
+    expect(removedCount(s.history)).toBe(3)
+    await s.send('what was the poem about', [], undefined, '<recall_hints>\nH\n</recall_hints>')
+    const sent = s.history.at(-2)!.content as string
+    expect(sent).toBe('what was the poem about\n\n<recall_hints>\nH\n</recall_hints>')
+    expect(splitHistoryTurns(s.history).at(-1)!.user).toBe('what was the poem about')
+    await s.compact({ keep: [1], summarize: [0] })
+    expect(removedCount(s.history)).toBe(4)
+    expect((s.history[0].content as string).match(/recall_note>/g)).toHaveLength(2)
   })
 
   it('keeps arbitrary (non-recent) turns verbatim in original order', async () => {

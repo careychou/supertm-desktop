@@ -3,7 +3,9 @@ import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { BRAND } from '../shared/brand'
 import type { Message } from '../engine/types'
-import { canNest, isWithin, orderRows, reorderIds, shownParent } from '../shared/fork'
+import { canNest, isWithin, liveTurnMap, orderRows, reorderIds, shownParent } from '../shared/fork'
+import { splitHistoryTurns } from '../engine/compact'
+import { entriesFromItems, entryOf, ftsQuery, type RecallHit, type RecallScope } from '../engine/recall'
 
 export interface UsageRec { ts: number; session_id: string; agent_id: string; model: string; prompt: number; cached: number; cache_write: number; completion: number }
 export interface SessionRow { id: string; title: string; cwd: string; model: string; created_at: number; updated_at: number; parent_id: string | null; fork_turn: number | null; reasoning?: string | null; mode?: string | null; memories?: string | null; sort_order?: number | null; compact_offset?: number | null; turn_map?: string | null }
@@ -35,6 +37,13 @@ export class Store {
     if (!cols.includes('sort_order')) this.db.exec('ALTER TABLE sessions ADD COLUMN sort_order INTEGER')
     this.db.exec('CREATE TABLE IF NOT EXISTS bookmarks (id TEXT PRIMARY KEY, kind TEXT, name TEXT, session_id TEXT, parent_id TEXT, sort_order INTEGER, collapsed INTEGER DEFAULT 0)')
     this.db.exec('CREATE TABLE IF NOT EXISTS usage (ts INTEGER, session_id TEXT, agent_id TEXT, model TEXT, prompt INTEGER, cached INTEGER, cache_write INTEGER, completion INTEGER); CREATE INDEX IF NOT EXISTS usage_ts ON usage(ts)')
+    // recall index: one row per turn, kept when compaction removes the turn from the history
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS turn_index (id INTEGER PRIMARY KEY, session_id TEXT, turn INTEGER, user_text TEXT, answer_text TEXT, tools TEXT, ts INTEGER, UNIQUE (session_id, turn));
+      CREATE VIRTUAL TABLE IF NOT EXISTS turn_fts USING fts5(user_text, answer_text, tools, content='turn_index', content_rowid='id', tokenize='porter unicode61');
+      CREATE TRIGGER IF NOT EXISTS turn_index_ai AFTER INSERT ON turn_index BEGIN INSERT INTO turn_fts(rowid, user_text, answer_text, tools) VALUES (new.id, new.user_text, new.answer_text, new.tools); END;
+      CREATE TRIGGER IF NOT EXISTS turn_index_ad AFTER DELETE ON turn_index BEGIN INSERT INTO turn_fts(turn_fts, rowid, user_text, answer_text, tools) VALUES ('delete', old.id, old.user_text, old.answer_text, old.tools); END;
+    `)
     if (!cols.includes('mode')) this.db.exec('ALTER TABLE sessions ADD COLUMN mode TEXT')
     if (!cols.includes('memories')) this.db.exec('ALTER TABLE sessions ADD COLUMN memories TEXT')
     if (!(this.db.prepare('PRAGMA table_info(folders)').all() as any[]).some((c) => c.name === 'memory')) this.db.exec('ALTER TABLE folders ADD COLUMN memory TEXT')
@@ -182,9 +191,74 @@ export class Store {
   deleteSession(id: string) {
     const row = this.getSession(id)
     this.db.prepare('UPDATE sessions SET parent_id = ? WHERE parent_id = ?').run(row?.parent_id ?? null, id)
-    for (const t of ['messages', 'ui_items']) this.db.prepare(`DELETE FROM ${t} WHERE session_id = ?`).run(id)
+    for (const t of ['messages', 'ui_items', 'turn_index']) this.db.prepare(`DELETE FROM ${t} WHERE session_id = ?`).run(id)
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id)
     this.db.prepare("DELETE FROM bookmarks WHERE kind = 'pin' AND session_id = ?").run(id)
+  }
+
+  /**
+   * Adds or refreshes the recall index rows for the turns in `msgs` (default: the stored history). Rows of turns that are
+   * no longer in the history are left alone, so compacted turns stay searchable. Returns how many rows were written.
+   */
+  indexSession(sessionId: string, msgs: Message[] = this.loadMessages(sessionId), ts = Date.now()): number {
+    const row = this.getSession(sessionId)
+    if (!row) return 0
+    const turns = splitHistoryTurns(msgs)
+    let map: number[] | null = null
+    try { map = row.turn_map ? JSON.parse(row.turn_map) : null } catch { /* legacy offset below */ }
+    const ui = liveTurnMap(turns.length, map, row.compact_offset ?? 0)
+    const have = new Map((this.db.prepare('SELECT turn, user_text, answer_text, tools FROM turn_index WHERE session_id = ?').all(sessionId) as any[]).map((r) => [r.turn as number, r]))
+    const del = this.db.prepare('DELETE FROM turn_index WHERE session_id = ? AND turn = ?')
+    const ins = this.db.prepare('INSERT INTO turn_index (session_id, turn, user_text, answer_text, tools, ts) VALUES (?, ?, ?, ?, ?, ?)')
+    let n = 0
+    for (const t of turns) {
+      const e = entryOf(t, ui[t.index], ts)
+      if (!e) continue
+      const old = have.get(e.turn)
+      if (old && old.user_text === e.user && old.answer_text === e.answer && old.tools === e.tools) continue
+      if (old) del.run(sessionId, e.turn)
+      ins.run(sessionId, e.turn, e.user, e.answer, e.tools, e.ts)
+      n++
+    }
+    return n
+  }
+  /** Fills in turns that are missing from the index from the saved transcript (turns compacted away before recall existed). Rows already indexed are kept. */
+  indexTranscript(sessionId: string, ts = Date.now()): number {
+    const ins = this.db.prepare('INSERT OR IGNORE INTO turn_index (session_id, turn, user_text, answer_text, tools, ts) VALUES (?, ?, ?, ?, ?, ?)')
+    let n = 0
+    for (const e of entriesFromItems(this.loadUiItems(sessionId) as any[], ts)) n += Number(ins.run(sessionId, e.turn, e.user, e.answer, e.tools, e.ts).changes)
+    return n
+  }
+  clearTurnIndex(sessionId: string) {
+    this.db.prepare('DELETE FROM turn_index WHERE session_id = ?').run(sessionId)
+  }
+  /** Sessions that have a stored history but no recall rows yet (created before recall, or imported). */
+  unindexedSessions(): Array<{ id: string; updated_at: number }> {
+    return this.db.prepare('SELECT id, updated_at FROM sessions WHERE id IN (SELECT DISTINCT session_id FROM messages) AND id NOT IN (SELECT DISTINCT session_id FROM turn_index)').all() as any
+  }
+  /** Copies recall rows up to UI turn `uptoTurn` to another session (fork), so turns compacted in the parent stay searchable there. */
+  copyTurnIndex(from: string, to: string, uptoTurn: number) {
+    this.db.prepare('INSERT OR IGNORE INTO turn_index (session_id, turn, user_text, answer_text, tools, ts) SELECT ?, turn, user_text, answer_text, tools, ts FROM turn_index WHERE session_id = ? AND turn <= ?').run(to, from, uptoTurn)
+  }
+  /** Keyword search over indexed turns, best match first. `session` = one chat, `folder` = chats in that chat's working folder, `all` = everything. */
+  /** Chats whose name matches `name`: an exact match (ignoring case) if there is one, otherwise every chat whose name contains it. */
+  sessionsNamed(name: string): Array<{ id: string; title: string }> {
+    const n = name.trim().toLowerCase()
+    if (!n) return []
+    const rows = (this.db.prepare('SELECT id, title FROM sessions ORDER BY updated_at DESC').all() as Array<{ id: string; title: string }>)
+      .filter((r) => (r.title ?? '').toLowerCase().includes(n))
+    const exact = rows.filter((r) => r.title.toLowerCase() === n)
+    return exact.length ? exact : rows
+  }
+  searchTurns(query: string, scope: RecallScope, sessionId: string, limit = 5, only?: string[]): RecallHit[] {
+    const match = ftsQuery(query)
+    if (!match) return []
+    const cwd = this.getSession(sessionId)?.cwd ?? ''
+    const cond = only ? `AND t.session_id IN (${only.map(() => '?').join(',')})` : scope === 'session' ? 'AND t.session_id = ?' : scope === 'folder' ? 'AND s.cwd = ?' : ''
+    const args = only ?? (scope === 'session' ? [sessionId] : scope === 'folder' ? [cwd] : [])
+    if (only && !only.length) return []
+    const rows = this.db.prepare(`SELECT t.session_id, t.turn, t.user_text, t.answer_text, t.tools, t.ts, s.title, s.cwd FROM turn_fts JOIN turn_index t ON t.id = turn_fts.rowid JOIN sessions s ON s.id = t.session_id WHERE turn_fts MATCH ? ${cond} ORDER BY bm25(turn_fts, 2.0, 1.0, 0.5), t.ts DESC LIMIT ?`).all(match, ...args, Math.max(1, Math.min(50, limit))) as any[]
+    return rows.map((r) => ({ sessionId: r.session_id, turn: r.turn, user: r.user_text, answer: r.answer_text, tools: r.tools, ts: r.ts, title: r.title ?? '', cwd: r.cwd ?? '', current: r.session_id === sessionId }))
   }
 
   /** Replaces the stored main-agent history (system message excluded). */
