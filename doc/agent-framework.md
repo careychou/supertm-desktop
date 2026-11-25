@@ -193,7 +193,7 @@ The status word is whatever the child ended as: `completed`, `failed` or `cancel
 
 4. If the whole session is **idle** (the main agent has already answered), `Session`'s idle hook starts a run with no new prompt; the loop's drain then delivers the notification and the main agent wakes up, reads the result and continues, as Copilot does.
 
-`<system_notification>` messages are *not* "real user" messages: compaction does not treat them as turn starts (see memory-compaction.md).
+`<system_notification>` messages are *not* "real user" messages: compaction does not treat them as turn starts (see context-memory.md).
 
 ## 6. Permissions and modes
 

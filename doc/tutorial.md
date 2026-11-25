@@ -306,7 +306,7 @@ Compaction folds older turns into a summary so long chats stay fast and cheap.
 - **Automatically**: in **Settings → Memory compaction**, set *Long chats* to **Auto**. The rules wait until the provider's prompt cache has gone cold (it is idle for the wait time), unless the chat is over the hard limit. They also skip compactions that would save too little.
 - **Compaction model**: choose a fast, cheaper model to write summaries. If it fails, the chat's model is used.
 
-How it works: [memory-compaction.md](memory-compaction.md).
+How it works: [context-memory.md](context-memory.md) (recall, recall hints, cross-chat recall and compaction).
 
 ## 6. See what you spend: AI usage
 

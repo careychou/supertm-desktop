@@ -72,7 +72,7 @@ flowchart LR
 - no path → `$GOOGLE_APPLICATION_CREDENTIALS` → `~/.config/gcloud/application_default_credentials.json` → `gcloud auth print-access-token`.
 Tokens are cached for 40 minutes, concurrent requests share one in-flight mint, a 401 forces one refresh, and 429/503 back off (0.6 s × attempt, up to 4 tries). A service account is exempt from the org's interactive re-auth policy, so it never asks the user to `gcloud auth login`.
 
-**Claude path.** `toAnthropic` translates the OpenAI-shaped history: system messages → `system`; assistant `tool_calls` → `tool_use` blocks; `role:tool` → user `tool_result` blocks; adjacent same-role turns merged (Anthropic needs alternation and grouped tool results); `data:` image URLs → base64 image blocks. Reasoning on → `thinking: {type:'adaptive', display:'summarized'}` + `output_config.effort`; `temperature`/`top_p` are never sent (Claude 5 rejects them). `applyPromptCache` places up to 4 `cache_control` breakpoints: last tool, system prompt, last block of the final message, last block of the previous user turn — the same rolling-prefix strategy described in [memory-compaction.md §9](memory-compaction.md). The request uses `:streamRawPredict`, so text, thinking and tool-argument JSON stream live; `anthropicDeltas` maps `content_block_*` / `message_delta` events to engine deltas and reports `prompt = input + cache_read + cache_write`, `cached = cache_read`, `cacheWrite = cache_creation` so the usage panel and cache-aware compaction see real cache hits.
+**Claude path.** `toAnthropic` translates the OpenAI-shaped history: system messages → `system`; assistant `tool_calls` → `tool_use` blocks; `role:tool` → user `tool_result` blocks; adjacent same-role turns merged (Anthropic needs alternation and grouped tool results); `data:` image URLs → base64 image blocks. Reasoning on → `thinking: {type:'adaptive', display:'summarized'}` + `output_config.effort`; `temperature`/`top_p` are never sent (Claude 5 rejects them). `applyPromptCache` places up to 4 `cache_control` breakpoints: last tool, system prompt, last block of the final message, last block of the previous user turn — the same rolling-prefix strategy described in [context-memory.md §15.1](context-memory.md#151-compaction-and-the-prompt-cache-why-auto-waits). The request uses `:streamRawPredict`, so text, thinking and tool-argument JSON stream live; `anthropicDeltas` maps `content_block_*` / `message_delta` events to engine deltas and reports `prompt = input + cache_read + cache_write`, `cached = cache_read`, `cacheWrite = cache_creation` so the usage panel and cache-aware compaction see real cache hits.
 
 **OpenAI-compatible path** (Gemini, GLM, gpt-oss, DeepSeek, Gemma) reuses `OpenAIAdapter` with two hooks: `fetch` (Bearer token + retry) and `shape` (drop `include_reasoning`; for Gemini replace `reasoning_effort` with `extra_body.google.thinking_config.include_thoughts`, which Vertex rejects in combination).
 
@@ -166,7 +166,7 @@ SQLite via `node:sqlite` (`~/.supertm/supertm.db`). Migrations are additive `ALT
 
 - `sliceMessagesAtTurn(messages, turn)`: scans for real user messages, counting turns, and cuts right before turn `turn + 1`, so notifications that belong to the chosen turn are kept.
 - `sliceItemsAtTurn(items, turn)`: same for UI items (a `user` item starts a turn).
-- If the source was compacted, the live-turn ↔ UI-turn map is sliced and stored in the fork (see memory-compaction.md §8).
+- If the source was compacted, the live-turn ↔ UI-turn map is sliced and stored in the fork (see context-memory.md §14).
 - Deleting a chat re-parents its forks onto the deleted chat's parent.
 
 **Tree** (`buildTree`): groups chats by `parent_id` into a forest; chats whose parent is missing are promoted to roots (orphans never disappear).
@@ -274,9 +274,9 @@ cost = ( uncached × input
 | `maxTurnsMain` / `maxTurnsSub` | 50 / 30 | Loop iteration caps |
 | `reasoning` | `medium` | `off`/`low`/`medium`/`high`; per chat override |
 | `defaultMode` | `autopilot` | New chats: `autopilot` or `interactive` |
-| `autoCompact`, `compactThreshold`, `compactKeepRecent` | `suggest`, 80,000, 2 | See memory-compaction.md §9 |
+| `autoCompact`, `compactThreshold`, `compactKeepRecent` | `suggest`, 80,000, 2 | See context-memory.md §15 |
 | `compactModel` | chat's model | Summaries / clustering model, falls back to the chat model |
-| `compactIdleMinutes`, `compactHardLimit`, `compactMinGain` | 5, 120,000, 20,000 | Cache-aware auto-compact policy (memory-compaction.md §9.1) |
+| `compactIdleMinutes`, `compactHardLimit`, `compactMinGain` | 5, 120,000, 20,000 | Cache-aware auto-compact policy (context-memory.md §15.1) |
 | `imageMaxEdge`, `imageQuality`, `imageMaxKB`, `docMaxChars` | 1568, 82, 1500, 80,000 | Attachment compression (§2) |
 | `requestMaxMB`, `imageTurns` | 20, 4 | Request budget (§3) |
 | `pricingPath`, `dailyBudget` | auto, 0 | Usage panel (§7) |
