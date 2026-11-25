@@ -21,16 +21,35 @@ const MAX_INPUT = 200 * 1024 * 1024
 const tmp = () => { const d = path.join(os.tmpdir(), `${BRAND.dataDir}-attach`); fs.mkdirSync(d, { recursive: true }); return d }
 const run = (cmd: string, args: string[]) => execFileSync(cmd, args, { maxBuffer: 256 * 1024 * 1024, timeout: 60000 })
 
-export async function prepareAttachment(input: AttachInput, l: AttachLimits): Promise<Prepared> {
+/**
+ * Turns a picked, dropped or pasted file into what the model receives. With `keepDir`, pasted data is kept there,
+ * so every attachment has a file on disk that the model can read again with its tools.
+ */
+export async function prepareAttachment(input: AttachInput, l: AttachLimits, keepDir?: string): Promise<Prepared> {
   const id = randomUUID()
   let file = input.path ?? ''
   const name = input.name || path.basename(file) || 'pasted'
+  let ok = false
   try {
     if (!file) {
       if (!input.data) throw new Error('nothing to attach')
-      file = path.join(tmp(), `${id}-${name.replace(/[^\w.-]/g, '_')}`)
+      if (keepDir) fs.mkdirSync(keepDir, { recursive: true })
+      file = path.join(keepDir ?? tmp(), `${id.slice(0, 8)}-${name.replace(/[^\w.-]/g, '_')}`)
       fs.writeFileSync(file, input.data)
     }
+    const r = await build(id, file, name, l)
+    if (r.att && (input.path || keepDir)) r.att.path = file
+    ok = true
+    return r
+  } catch (e: any) {
+    return { id, meta: { name, kind: 'doc', info: 'Could not attach' }, error: e?.message ?? String(e) }
+  } finally {
+    if (!input.path && file && !(ok && keepDir)) fs.rmSync(file, { force: true })
+  }
+}
+
+async function build(id: string, file: string, name: string, l: AttachLimits): Promise<Prepared> {
+  {
     const st = fs.statSync(file)
     if (st.isDirectory()) throw new Error('folders cannot be attached; mention the path in your prompt instead')
     if (st.size > MAX_INPUT) throw new Error(`file is ${fmtBytes(st.size)}; the limit is ${fmtBytes(MAX_INPUT)}`)
@@ -47,10 +66,6 @@ export async function prepareAttachment(input: AttachInput, l: AttachLimits): Pr
       text = buf.toString('utf8')
     }
     return { id, ...doc(name, text, st.size, l) }
-  } catch (e: any) {
-    return { id, meta: { name, kind: 'doc', info: 'Could not attach' }, error: e?.message ?? String(e) }
-  } finally {
-    if (!input.path && file) fs.rmSync(file, { force: true })
   }
 }
 
@@ -111,22 +126,57 @@ function doc(name: string, raw: string, size: number, l: AttachLimits, extra = '
   return { att, meta: { name, kind: 'doc' as const, info } }
 }
 
+/** Renders the first pages of a PDF to PNG files with PDFKit (JXA), which needs no extra install on macOS. */
+const RENDER = `ObjC.import('Quartz'); ObjC.import('AppKit')
+function run(argv) {
+  const doc = $.PDFDocument.alloc.initWithURL($.NSURL.fileURLWithPath(argv[0]))
+  if (doc.isNil()) throw new Error('unreadable PDF')
+  const n = Math.min(Number(doc.pageCount), Number(argv[2])), edge = Number(argv[3])
+  for (let i = 0; i < n; i++) {
+    const page = doc.pageAtIndex(i), b = page.boundsForBox($.kPDFDisplayBoxMediaBox)
+    const s = edge / Math.max(b.size.width, b.size.height)
+    const img = page.thumbnailOfSizeForBox($.NSMakeSize(b.size.width * s, b.size.height * s), $.kPDFDisplayBoxMediaBox)
+    const rep = $.NSBitmapImageRep.imageRepWithData(img.TIFFRepresentation)
+    rep.representationUsingTypeProperties($.NSBitmapImageFileTypePNG, $.NSDictionary.dictionary).writeToFileAtomically(argv[1] + '/p' + (i + 1) + '.png', true)
+  }
+  return String(n)
+}`
+
+function renderPages(file: string, max: number, edge: number): string[] {
+  const dir = fs.mkdtempSync(path.join(tmp(), 'pdf-'))
+  try {
+    const n = Number(run('osascript', ['-l', 'JavaScript', '-e', RENDER, file, dir, String(max), String(edge)]).toString('utf8').trim())
+    if (n > 0) return Array.from({ length: n }, (_, i) => path.join(dir, `p${i + 1}.png`))
+  } catch { /* fall through to page 1 only */ }
+  const out = path.join(dir, 'p1.png')
+  run('sips', ['-s', 'format', 'png', file, '--out', out])
+  return [out]
+}
+
 async function pdf(file: string, name: string, size: number, l: AttachLimits) {
   const { extractText, getDocumentProxy } = await import('unpdf')
-  const doc0 = await getDocumentProxy(new Uint8Array(fs.readFileSync(file)))
+  const bytes = fs.readFileSync(file)
+  const doc0 = await getDocumentProxy(new Uint8Array(bytes))
   const { totalPages, text } = await extractText(doc0, { mergePages: false })
   const pages = (text as string[]).map((t, i) => `--- page ${i + 1} ---\n${t.trim()}`)
+  const count = `${totalPages} page${totalPages === 1 ? '' : 's'}`
   if ((text as string[]).join('').trim().length < 20 * totalPages) {
-    // scanned PDF without a text layer: send the first page as an image instead
-    const out = path.join(tmp(), `${randomUUID()}.png`)
-    run('sips', ['-s', 'format', 'png', file, '--out', out])
+    // scanned PDF without a text layer: send its pages as images, up to the page cap
+    const files = renderPages(file, Math.max(1, l.pdfMaxPages), l.imageMaxEdge)
     try {
-      const r = image(out, name, 'png', fs.statSync(out).size, l)
-      r.meta.info = `scanned PDF (${totalPages} p) · page 1 as image · ${r.meta.info.split(' · ').slice(-2).join(' · ')}`
-      return r
-    } finally { fs.rmSync(out, { force: true }) }
+      const imgs = files.map((f) => image(f, name, 'png', fs.statSync(f).size, l))
+      const sent = imgs.map((r) => { const a = r.att as Extract<Attachment, { kind: 'image' }>; return { dataUrl: a.dataUrl, width: a.width, height: a.height } })
+      const att: Attachment = { kind: 'pages', name, pages: sent, total: totalPages }
+      const info = `scanned PDF (${count}) · ${sent.length === totalPages ? 'all pages' : `first ${sent.length}`} as images · ${fmtTokens(sent.length * IMAGE_TOKENS)}`
+      return { att, meta: { name, kind: 'image' as const, thumb: imgs[0].meta.thumb, info } }
+    } finally { fs.rmSync(path.dirname(files[0]), { recursive: true, force: true }) }
   }
-  return doc(name, pages.join('\n\n'), size, l, `${totalPages} page${totalPages === 1 ? '' : 's'}`)
+  const r = doc(name, pages.join('\n\n'), size, l, count)
+  const t = r.att as Extract<Attachment, { kind: 'text' }>
+  if (l.pdfNativeMaxMB <= 0 || size > l.pdfNativeMaxMB * 1024 * 1024 || totalPages > l.pdfMaxPages) return r
+  // small enough to send as the file itself: Claude also sees the layout, charts and tables; other models get the text
+  const att: Attachment = { kind: 'pdf', name, data: bytes.toString('base64'), text: t.text, pages: totalPages, note: t.note }
+  return { att, meta: { name, kind: 'doc' as const, info: r.meta.info, pdf: true } }
 }
 
 const zipList = (file: string) => run('unzip', ['-Z1', file]).toString('utf8').split('\n').filter(Boolean)

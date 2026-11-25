@@ -35,7 +35,7 @@ export const COMPACT_ACK = 'Understood. I have the summary of the earlier conver
 export const estimateTokens = (messages: Message[]) =>
   Math.round(messages.reduce((n, m) => {
     if (m.role !== 'user' || typeof m.content === 'string') return n + JSON.stringify(m).length / 4
-    return n + m.content.reduce((k, p) => k + (p.type === 'text' ? p.text.length / 4 : IMAGE_TOKENS), 8)
+    return n + m.content.reduce((k, p) => k + (p.type === 'text' ? p.text.length / 4 : p.type === 'file' ? p.file.text.length / 4 + p.file.pages * IMAGE_TOKENS : IMAGE_TOKENS), 8)
   }, 0))
 
 /** Existing summary carried by a previous compaction (the leading <compacted_history> message), if any. */

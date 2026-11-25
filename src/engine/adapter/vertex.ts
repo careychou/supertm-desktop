@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import type { ChatRequest, ContentPart, Delta, Message, ModelAdapter } from '../types'
 import { parseSSE } from './sse'
-import { fitRequest, type RequestBudget } from '../content'
+import { filesAsText, fitRequest, type RequestBudget } from '../content'
 import { OpenAIAdapter } from './openai'
 import { VertexAuth } from './vertex-auth'
 import { anthropicDeltas, toAnthropic, type AnthropicTtl } from './anthropic'
@@ -99,8 +99,11 @@ export class VertexAdapter implements ModelAdapter {
     const m = this.model(req.model)
     if (m.tts) { yield* this.speech(m, req, signal); return }
     let messages = this.cfg.budget ? fitRequest(req.messages, this.cfg.budget()) : req.messages
+    const claude = m.id.startsWith('anthropic/')
+    // only Claude reads a PDF as a file; every other model gets its text
+    if (!claude || m.vision === 'describe') messages = filesAsText(messages)
     if (m.vision === 'describe') messages = await this.describeImages(messages, signal)
-    if (m.id.startsWith('anthropic/')) yield* this.claude(m, { ...req, messages }, signal)
+    if (claude) yield* this.claude(m, { ...req, messages }, signal)
     else yield* this.openapi(m, { ...req, messages }, signal)
   }
 

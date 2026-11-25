@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { compressText, encodeWithin, fitDims, pptxToText, xlsxSharedStrings, xlsxSheetText, DEFAULT_LIMITS } from '../src/shared/attach'
-import { buildUserContent, fitRequest, OMITTED_IMAGE, textOf } from '../src/engine/content'
+import { buildUserContent, filesAsText, fitRequest, OMITTED_IMAGE, textOf } from '../src/engine/content'
+import { toAnthropic } from '../src/engine/adapter/anthropic'
 import { estimateTokens, splitHistoryTurns } from '../src/engine/compact'
 import type { Message } from '../src/engine/types'
 
@@ -86,5 +87,43 @@ describe('request budget', () => {
     const out = fitRequest(ms, { maxBytes: JSON.stringify(ms).length - 500, imageTurns: 0 })
     expect(images(out)).toBe(1)
     expect(Array.isArray(out[2].content) && out[2].content.some((p) => p.type === 'image_url')).toBe(true)
+  })
+})
+
+describe('file on disk and PDFs', () => {
+  const pdf = { kind: 'pdf' as const, name: 'r.pdf', data: 'B'.repeat(4000), text: '--- page 1 ---\nhello', pages: 2, path: '/tmp/r.pdf' }
+  const files = (ms: Message[]) => ms.flatMap((m) => (Array.isArray(m.content) ? m.content.filter((p) => p.type === 'file') : [])).length
+
+  it('tells the model where each attachment is, once', () => {
+    expect(buildUserContent('x', [{ kind: 'text', name: 'a.md', text: 'A', note: '2 pages', path: '/d/a.md' }]))
+      .toBe('x\n\n<attachment name="a.md" note="2 pages; file on disk: /d/a.md">\nA\n</attachment>')
+    expect(buildUserContent('x', [{ kind: 'text', name: 'a.xlsx', text: 'A', note: 'file on disk: /d/a.xlsx (use excel)', path: '/d/a.xlsx' }]))
+      .toBe('x\n\n<attachment name="a.xlsx" note="file on disk: /d/a.xlsx (use excel)">\nA\n</attachment>')
+    expect(textOf(buildUserContent('x', [{ ...img(), path: '/d/shot.png' }]))).toContain('Attached image: shot.png (10×10); file on disk: /d/shot.png')
+  })
+
+  it('sends every rendered page of a scanned PDF', () => {
+    const pg = { dataUrl: 'data:image/png;base64,AA', width: 5, height: 5 }
+    const c = buildUserContent('x', [{ kind: 'pages', name: 's.pdf', pages: [pg, pg], total: 9, path: '/d/s.pdf' }])
+    expect(textOf(c)).toBe('x\nAttached scanned PDF: s.pdf (pages 1-2 of 9, one image per page); file on disk: /d/s.pdf\n[image]\n[image]')
+  })
+
+  it('carries a PDF as a file part with a text fallback', () => {
+    const ms: Message[] = [{ role: 'user', content: buildUserContent('read', [pdf]) }]
+    expect(files(ms)).toBe(1)
+    const flat = filesAsText(ms)
+    expect(flat[0].content).toEqual([{ type: 'text', text: 'read' }, { type: 'text', text: '<attachment name="r.pdf" note="file on disk: /tmp/r.pdf">\n--- page 1 ---\nhello\n</attachment>' }])
+    expect(files(ms)).toBe(1)
+    expect(estimateTokens(ms)).toBeLessThan(4000)
+    expect(JSON.stringify(toAnthropic(ms, { model: 'm', messages: ms } as any, '5m'))).toContain('"type":"document","source":{"type":"base64","media_type":"application/pdf","data":"BBBB')
+  })
+
+  it('falls back to the PDF text when it is old or the body is too large', () => {
+    const ms: Message[] = [{ role: 'user', content: buildUserContent('1', [pdf]) }, { role: 'assistant', content: 'ok' }, { role: 'user', content: 'next' }]
+    const old = fitRequest(ms, { maxBytes: 1e9, imageTurns: 1 })
+    expect(files(old)).toBe(0)
+    expect(textOf(old[0].content as any)).toContain('--- page 1 ---\nhello')
+    expect(files(fitRequest(ms, { maxBytes: 2000, imageTurns: 0 }))).toBe(0)
+    expect(files(fitRequest(ms, { maxBytes: 1e9, imageTurns: 0 }))).toBe(1)
   })
 })

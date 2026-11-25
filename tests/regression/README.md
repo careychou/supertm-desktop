@@ -24,6 +24,7 @@ npm run release:check   # typecheck + every test (unit + regression)
 
 | Release | Feature | Covered by |
 |---|---|---|
+| 1.4.5 | Attachments: file path, kept pasted files, PDF as file to Claude, scanned pages, text for other models | `attach.test.ts` (file on disk and PDFs) |
 | 1.4.4 | Recall: turn index, `recall` tool, search another chat by name, recall hints, compaction note | `recall.test.ts`, `compact.test.ts`, `regression/v1.4.x.test.ts` |
 | 1.4.3 | Import list from index only (no event logs, Claude head/tail, read-only store) | `import-external.test.ts` |
 | 1.4.2 | Several MCP servers: add/rename/disable/remove, form ↔ entry | `mcp.test.ts` (mcp config) |
@@ -70,5 +71,6 @@ npm run release:check   # typecheck + every test (unit + regression)
 - [ ] Export to Skill Pack: tree, edit, save writes the folder.
 - [ ] Dialogs resize from edges, ✕ and ⤢ work; drag a chat under another.
 - [ ] Turn rail jumps between prompts; file links open / reveal.
+- [ ] Drop a PDF: chip says "sent as PDF" on Claude and "sent as text" on another model; a scanned PDF shows its pages as images.
 - [ ] Excel / Word / PowerPoint live edit asks first and applies (if installed).
 - [ ] Keychain prompt "Always Allow" keeps keys after restart.

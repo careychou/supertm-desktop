@@ -16,7 +16,10 @@ function toBlocks(c: string | ContentPart[] | null | undefined): Block[] {
   const out: Block[] = []
   for (const p of c) {
     if (p.type === 'text') { if (p.text) out.push({ type: 'text', text: p.text }) }
-    else {
+    else if (p.type === 'file') {
+      out.push({ type: 'document', source: { type: 'base64', media_type: p.file.media_type, data: p.file.data }, title: p.file.name })
+      if (p.file.note) out.push({ type: 'text', text: `${p.file.name}: ${p.file.note}` })
+    } else {
       const url = p.image_url?.url ?? ''
       const m = /^data:([^;,]*);base64,(.*)$/s.exec(url)
       if (m) out.push({ type: 'image', source: { type: 'base64', media_type: m[1] || 'image/png', data: m[2] } })

@@ -6,7 +6,11 @@ export interface ToolCall {
   extra_content?: unknown
 }
 
-export type ContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+  /** A PDF sent as the file itself to models that read PDFs natively; `text` is what every other model gets instead. */
+  | { type: 'file'; file: { name: string; media_type: 'application/pdf'; data: string; text: string; pages: number; note?: string } }
 
 export type Message =
   | { role: 'system'; content: string }

@@ -1,6 +1,6 @@
 import type { ChatRequest, Delta, Message, ModelAdapter } from '../types'
 import { parseSSE } from './sse'
-import { fitRequest, type RequestBudget } from '../content'
+import { filesAsText, fitRequest, type RequestBudget } from '../content'
 import { responsesBody, responsesDeltas } from './responses'
 import { anthropicDeltas, toAnthropic, type AnthropicTtl } from './anthropic'
 import { outputCap, sendWithOutputRetry } from '../limits'
@@ -27,7 +27,7 @@ export interface AdapterConfig {
 /** Strips engine-only fields before sending messages upstream. */
 // Gemini rejects a tool-call turn sent back without its thought_signature; other endpoints may reject the unknown field
 function wireMessages(msgs: Message[], budget?: RequestBudget, keepExtra = false): unknown[] {
-  return fitMessages(msgs, budget).map((m) => {
+  return filesAsText(fitMessages(msgs, budget)).map((m) => {
     if (m.role === 'assistant') {
       const { reasoning: _r, ...rest } = m
       if (!keepExtra && rest.tool_calls?.some((c) => c.extra_content !== undefined)) rest.tool_calls = rest.tool_calls.map(({ extra_content: _x, ...c }) => c)

@@ -44,8 +44,10 @@ Everything SuperTM Desktop does, in detail. New to the app? Start with the [tuto
 ## Attachments
 - **Paste, drop or 📎** — paste screenshots/files (⌘V), drag files anywhere onto the window, or pick them with 📎. Chips show the size before → after and estimated tokens.
 - **Images** (PNG, JPEG, GIF, WebP, HEIC, TIFF, BMP): downscaled to a max edge (default 1568 px) and re-encoded (JPEG q82, stepping down until ≤ 1.5 MB). They are sent as `image_url` parts and look the same to the model at a fraction of the size.
-- **Documents**: PDF (text per page; scanned PDFs fall back to a page image), Word/RTF/ODT/HTML (via macOS `textutil`), PowerPoint (slide text), Excel (sheet rows), and any plain-text or code file. Text is whitespace-normalized and long files are trimmed head + tail (default 80k chars).
-- **Request-size guard**: images are re-sent only for the last N prompts (default 4; older ones become a note), and the oldest images are dropped if a request would exceed the cap (default 20 MB, safely under Vertex's 30 MB). All limits are in Settings → *Attachments*.
+- **Documents**: Word/RTF/ODT/HTML (via macOS `textutil`), PowerPoint (slide text), Excel (sheet rows), and any plain-text or code file. Text is whitespace-normalized and long files are trimmed head + tail (default 80k chars).
+- **PDF**: a PDF up to 8 MB and 20 pages goes to Claude models as the file itself, so Claude sees layout, charts and tables. Other models get the text per page. The chip says "sent as PDF" or "sent as text" for the selected model. A scanned PDF (no text layer) is sent as page images, up to the page limit. Larger PDFs are sent as text.
+- **File path**: each attachment carries its path on disk, so the model can read more of the file with its tools (a trimmed part, another page, a formula). Pasted files are saved under `attachments/` in the app's data folder for this.
+- **Request-size guard**: images and PDF files are re-sent only for the last N prompts (default 4; older ones become a note), and the oldest images are dropped if a request would exceed the cap (default 20 MB, safely under Vertex's 30 MB). All limits are in Settings → *Attachments*.
 
 ## Memory & context
 - **Share a session** — export **all turns or selected turns** to Markdown (optionally with tool calls and thinking), save to a file or copy to clipboard.

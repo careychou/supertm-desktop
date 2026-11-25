@@ -72,7 +72,7 @@ let currentRouter: ProviderRouter | null = null
 const adapter = () => ({ stream: (req: any, signal: AbortSignal) => (currentRouter ??= router()).stream(req, signal) })
 /** Last main/sub-agent model call per chat: the provider's prompt cache is warm for a few minutes after it. */
 const lastCall = new Map<string, number>()
-const prepare = (inputs: AttachInput[]) => Promise.all(inputs.map(async (i) => { const p = await prepareAttachment(i, settings); return excel ? excel.svc.decorate(p, i.path) : p }))
+const prepare = (inputs: AttachInput[]) => Promise.all(inputs.map(async (i) => { const p = await prepareAttachment(i, settings, path.join(dataHome, 'attachments')); return excel ? excel.svc.decorate(p, i.path) : p }))
 
 function getLive(id: string): Session {
   let s = live.get(id)

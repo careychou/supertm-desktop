@@ -1,5 +1,15 @@
 # Release notes
 
+## 1.4.5
+
+### Attachments: the model gets the file, not only its text (Settings → General → Attachments)
+- **File path:** every attachment now tells the model where the file is on disk. When a long document was trimmed, or the model needs a table, a formula or another page, it reads the file with its tools instead of asking you
+- **Pasted files are kept:** a pasted screenshot or file is saved in the app's data folder (`attachments/`), so the model can open it again later in the chat
+- **PDF sent as a PDF to Claude:** a PDF up to 8 MB and 20 pages is sent as the file itself to Claude models (Anthropic, Vertex, Azure). Claude then sees the layout, charts and tables as well as the text. Other models get the extracted text, as before. The chip says "sent as PDF" or "sent as text" for the model you picked
+- **Scanned PDFs:** all pages, up to the page limit, are sent as images. Before, only page 1 was sent
+- Two new limits: **PDF max pages** (default 20) and **Send PDF as file up to (MB)** (default 8; 0 turns it off). A PDF over either limit is sent as text
+- A PDF file is re-sent for the same number of prompts as an image (default 4). After that, the request carries its text
+
 ## 1.4.4
 
 ### Recall: find earlier turns again (Settings → Memory compaction → Recall hints)

@@ -9,16 +9,20 @@ export interface AttachLimits {
   imageMaxKB: number
   /** Max characters kept from a document; the middle is cut beyond this. */
   docMaxChars: number
+  /** PDF page cap: a scanned PDF sends this many pages as images, and a PDF with more pages is sent as text only. */
+  pdfMaxPages: number
+  /** PDFs up to this size (MB) are sent as the file itself to models that read PDFs; 0 = always send text only. */
+  pdfNativeMaxMB: number
 }
 
-export const DEFAULT_LIMITS: AttachLimits = { imageMaxEdge: 1568, imageQuality: 82, imageMaxKB: 1500, docMaxChars: 80000 }
+export const DEFAULT_LIMITS: AttachLimits = { imageMaxEdge: 1568, imageQuality: 82, imageMaxKB: 1500, docMaxChars: 80000, pdfMaxPages: 20, pdfNativeMaxMB: 8 }
 
 /** UI-side description of a prepared attachment (stored with the chat for display). */
 /**
  * `excel`: an Excel workbook the agent can also reach with its excel_* tools: open in Excel ('live') or a file on disk.
  * `office`: a document open in Word or a presentation open in PowerPoint, which the agent reaches with its word_* / powerpoint_* tools.
  */
-export interface AttachMeta { name: string; kind: 'image' | 'doc'; thumb?: string; info: string; excel?: 'live' | 'file'; office?: 'word' | 'powerpoint' }
+export interface AttachMeta { name: string; kind: 'image' | 'doc'; thumb?: string; info: string; excel?: 'live' | 'file'; office?: 'word' | 'powerpoint'; /** Sent as the PDF file itself to Claude, as its text to other models. */ pdf?: boolean }
 
 /** Scales (w, h) so the long edge is at most `maxEdge`; never upscales. */
 export function fitDims(w: number, h: number, maxEdge: number): { width: number; height: number } {
