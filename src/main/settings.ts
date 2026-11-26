@@ -60,6 +60,8 @@ export interface Settings extends AttachLimits, ToolLimits {
   mcpEnabled: boolean
   /** Look for a newer release a few seconds after launch and offer it in a banner. */
   checkUpdatesOnLaunch: boolean
+  /** Chats in Bookmarks (with their sub-chats) are shown only there, not again under their working folder. */
+  hidePinnedInFolders: boolean
   /** Release the user chose to skip; the launch check stays quiet until something newer than it appears. */
   skippedVersion: string
   /** PEM bundle of extra CAs trusted for HTTPS (corporate roots); '' = system trust only. */
@@ -80,7 +82,7 @@ export function loadSettings(): Settings {
   const first: ProviderEntry = v.project
     ? { id: 'default', name: BRAND.vertexProviderName, kind: 'vertex', baseUrl: '', apiKey: '', project: v.project, location: v.location, credentialsPath: '', models: [...v.models], visionModel: v.visionModel, cacheTtl: '5m' }
     : { id: 'default', name: BRAND.defaultProviderName, kind: 'openai', baseUrl: d.baseUrl, apiKey: d.apiKey }
-  const defaults: Settings = { providers: [first], defaultModel: 'anthropic/claude-sonnet-5', defaultCwd: os.homedir(), maxConcurrency: 20, maxTurnsMain: 500, maxTurnsSub: 500, maxOutputTokens: 0, ...DEFAULT_TOOL_LIMITS, reasoning: 'medium', defaultMode: 'autopilot', autoCompact: 'suggest', compactThreshold: 80000, compactKeepRecent: 2, recallHints: true, compactModel: BRAND.defaultCompactModel, compactIdleMinutes: 5, compactHardLimit: 120000, compactMinGain: 20000, ...DEFAULT_LIMITS, requestMaxMB: 20, imageTurns: 4, pricingPath: '', dailyBudget: 0, excelEnabled: true, excelConfirm: 'ask', excelBackup: true, officeEnabled: true, officeConfirm: 'ask', officeTrack: false, officeBackup: true, mcpEnabled: true, checkUpdatesOnLaunch: true, skippedVersion: '', extraCaFile: BRAND.extraCaFile }
+  const defaults: Settings = { providers: [first], defaultModel: 'anthropic/claude-sonnet-5', defaultCwd: os.homedir(), maxConcurrency: 20, maxTurnsMain: 500, maxTurnsSub: 500, maxOutputTokens: 0, ...DEFAULT_TOOL_LIMITS, reasoning: 'medium', defaultMode: 'autopilot', autoCompact: 'suggest', compactThreshold: 80000, compactKeepRecent: 2, recallHints: true, compactModel: BRAND.defaultCompactModel, compactIdleMinutes: 5, compactHardLimit: 120000, compactMinGain: 20000, ...DEFAULT_LIMITS, requestMaxMB: 20, imageTurns: 4, pricingPath: '', dailyBudget: 0, excelEnabled: true, excelConfirm: 'ask', excelBackup: true, officeEnabled: true, officeConfirm: 'ask', officeTrack: false, officeBackup: true, mcpEnabled: true, checkUpdatesOnLaunch: true, hidePinnedInFolders: true, skippedVersion: '', extraCaFile: BRAND.extraCaFile }
   try {
     const raw = JSON.parse(fs.readFileSync(file(), 'utf8'))
     const open = (enc?: string): string | undefined => {

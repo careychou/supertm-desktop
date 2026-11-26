@@ -1,5 +1,13 @@
 # Release notes
 
+## 1.4.8
+
+### Bookmarked chats leave the folder list
+- A chat you pin to Bookmarks, with all its sub-chats, is now listed **only under Bookmarks**, so the working-folder lists stay short. Nothing is moved or changed: unpin it, or drag its pin onto its working folder, and it is back in its folder where it was
+- Each folder ends with a muted **★ N in Bookmarks** line, so hidden chats are never lost. Click it to open Bookmarks
+- New forks of a bookmarked chat appear under its pin
+- Prefer seeing them in both places? **Settings → General → Bookmarked chats in working folders → Show**
+
 ## 1.4.7
 
 ### Bookmarks hold whole chat trees, and running chats are easy to spot

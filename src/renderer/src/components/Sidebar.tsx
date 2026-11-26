@@ -13,6 +13,8 @@ interface Props {
   bookmarks: BookmarkRow[]
   currentId: string | null
   busyIds: Set<string>
+  /** Chats in Bookmarks (and their sub-chats) are left out of their working folder. */
+  hidePinned?: boolean
   onOpen(id: string): void
   onNewChat(cwd: string): void
   onDelete(s: SessionRow): void
@@ -49,6 +51,9 @@ type Ctx = Props & {
   setMoving(s: SessionRow | null): void
   /** Session ids that have a pin. */
   pinned: Set<string | null>
+  /** Chats shown under Bookmarks (pinned chats and their sub-chats). */
+  inBookmarks: Set<string>
+  showBookmarks(): void
 }
 
 /** Spinning ring shown while a chat runs. `inside` = collapsed row whose running chats are hidden beneath it. */
@@ -303,7 +308,9 @@ function BookmarkNode({ b, depth, c }: { b: BookmarkRow; depth: number; c: Ctx }
 
 function FolderGroup({ folder, sessions, c }: { folder: FolderRow; sessions: SessionRow[]; c: Ctx }) {
   const [open, setOpen] = useState(true)
-  const tree = buildTree(sessions)
+  const hidden = c.hidePinned ? sessions.filter((x) => c.inBookmarks.has(x.id)) : []
+  const shown = hidden.length ? sessions.filter((x) => !c.inBookmarks.has(x.id)) : sessions
+  const tree = buildTree(shown)
   const hasMem = hasMemory(parseMemory(folder.memory))
   const menu = (e: React.MouseEvent) => c.setMenu(at(e, [
     { label: '✎ New chat', onClick: () => c.onNewChat(folder.path) },
@@ -312,16 +319,17 @@ function FolderGroup({ folder, sessions, c }: { folder: FolderRow; sessions: Ses
     'sep',
     { label: '× Remove folder', danger: true, onClick: () => c.onRemoveFolder(folder.path) }
   ]))
-  // Dropping a nested chat on its folder moves it back to the top level.
+  // Dropping a nested chat on its folder moves it back to the top level; dropping a pin of this folder's chat unpins it.
+  const pinOf = (dr: Drag) => (dr.kind === 'bookmark' ? c.bookmarks.find((x) => x.id === dr.id && x.kind === 'pin' && sessions.some((s) => s.id === x.session_id)) : undefined)
   const d = dnd(c, `f:${folder.path}`, { kind: 'session', id: '' },
-    (dr) => (dr.kind === 'session' && sessions.some((x) => x.id === dr.id) && shownParent(c.sessions, dr.id) ? 'into' : null),
-    (dr) => { setOpen(true); void window.desk.moveSession(dr.id, null) }, true)
+    (dr) => ((dr.kind === 'session' && sessions.some((x) => x.id === dr.id) && shownParent(c.sessions, dr.id)) || pinOf(dr) ? 'into' : null),
+    (dr) => { setOpen(true); const pin = pinOf(dr); void (pin ? window.desk.removeBookmark(pin.id) : window.desk.moveSession(dr.id, null)) }, true)
   return (
     <div className="folder-group">
       <div className={`folder-row${d.cls}`} onDragOver={d.props.onDragOver} onDragLeave={d.props.onDragLeave} onDrop={d.props.onDrop} onClick={() => setOpen(!open)} onContextMenu={menu} title={folder.path}>
         <span className="folder-icon">{open ? '📂' : '📁'}</span>
         <span className="title">{base(folder.path)}</span>
-        {!open && <Running n={busyCount(c, sessions.map((x) => x.id))} inside />}
+        {!open && <Running n={busyCount(c, shown.map((x) => x.id))} inside />}
         {c.pluginUpdates?.has(folder.path) && <button className="tm-badge" title="Plugin updates available. Click to review." onClick={(e) => { e.stopPropagation(); c.onPlugins?.(folder.path) }}>⬆</button>}
         {hasMem && <button className="folder-mem" title="Folder memory: shared by every chat in this folder. Click to edit." onClick={(e) => { e.stopPropagation(); c.onFolderMemory(folder.path) }}>🗂</button>}
         <button className="folder-act" title="New chat in this folder" onClick={(e) => { e.stopPropagation(); c.onNewChat(folder.path) }}>＋</button>
@@ -330,6 +338,7 @@ function FolderGroup({ folder, sessions, c }: { folder: FolderRow; sessions: Ses
       {open && (tree.length
         ? tree.map((n) => <SessionNode key={n.row.id} node={n} depth={0} c={c} />)
         : <div className="session empty-hint" onClick={() => c.onNewChat(folder.path)}>Start a chat…</div>)}
+      {open && hidden.length > 0 && <div className="session in-bookmarks" title="These chats are listed under Bookmarks. Unpin one to bring it back here, or change this in Settings → General." onClick={c.showBookmarks}>★ {hidden.length} in Bookmarks</div>}
     </div>
   )
 }
@@ -342,7 +351,10 @@ export function Sidebar(p: Props) {
   const [over, setOver] = useState<{ key: string; zone: Zone } | null>(null)
   const [moving, setMoving] = useState<SessionRow | null>(null)
   const pinned = new Set(p.bookmarks.filter((b) => b.kind === 'pin').map((b) => b.session_id))
-  const c: Ctx = { ...p, setMenu, editing, setEditing, drag, over, setOver, setMoving, pinned }
+  const inBookmarks = new Set([...pinned].flatMap((id) => { const t = id ? subtreeOf(p.sessions, id) : null; return t ? subtreeIds(t) : [] }))
+  const bmRef = useRef<HTMLDivElement>(null)
+  const showBookmarks = () => { setBmOpen(true); bmRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }) }
+  const c: Ctx = { ...p, setMenu, editing, setEditing, drag, over, setOver, setMoving, pinned, inBookmarks, showBookmarks }
   const bmRoot = dnd(c, 'bm-root', { kind: 'bookmark', id: '' }, () => 'into', (dr) => {
     setBmOpen(true)
     if (dr.kind === 'session') void window.desk.pinSession(dr.id, null, null, false)
@@ -356,12 +368,12 @@ export function Sidebar(p: Props) {
       </div>
       <button className="new-chat" onClick={() => p.onNewChat('')}>✎ New chat</button>
       <div className="sessions">
-        <div className="folder-group bookmarks">
+        <div className="folder-group bookmarks" ref={bmRef}>
           <div className={`folder-row section${bmRoot.cls}`} onDragOver={bmRoot.props.onDragOver} onDragLeave={bmRoot.props.onDragLeave} onDrop={bmRoot.props.onDrop}
             onClick={() => setBmOpen(!bmOpen)} title="Drop a chat here to pin it">
             <span className="folder-icon">★</span>
             <span className="title">Bookmarks</span>
-            {!bmOpen && <Running n={busyCount(c, [...pinned].flatMap((id) => { const t = id ? subtreeOf(p.sessions, id) : null; return t ? subtreeIds(t) : [] }))} inside />}
+            {!bmOpen && <Running n={busyCount(c, [...inBookmarks])} inside />}
             <button className="folder-act" title="New bookmark folder" onClick={(e) => { e.stopPropagation(); setBmOpen(true); void window.desk.addBookmarkFolder('New folder', null) }}>＋</button>
           </div>
           {bmOpen && (top.length

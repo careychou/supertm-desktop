@@ -58,6 +58,12 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
                 <option value="off">Off — I'll check in Settings → About</option>
               </select>
             </label>
+            <label><Lbl text="Bookmarked chats in working folders" tip="A chat you pin to Bookmarks, together with its sub-chats, can be listed only under Bookmarks so the folder lists stay short, or in both places. A hidden chat is not moved or changed: unpin it and it is back in its folder. Each folder shows how many of its chats are in Bookmarks." ex="Hide: pin “req queue” and it and its forks leave the demo folder; the folder ends with “★ 3 in Bookmarks”." />
+              <select value={s.hidePinnedInFolders === false ? 'show' : 'hide'} onChange={(e) => setS({ ...s, hidePinnedInFolders: e.target.value === 'hide' })}>
+                <option value="hide">Hide — show them only under Bookmarks (default)</option>
+                <option value="show">Show — list them under Bookmarks and in their folder</option>
+              </select>
+            </label>
             <div className="sub-h">Attachments: compress to save tokens and stay under the provider's request limit</div>
             <div className="row3">
               <label><Lbl text="Image max edge (px)" tip="Attached images are shrunk so their longest side is at most this many pixels. Smaller images cost fewer tokens; most models see little benefit above ~1568." ex="At 1568, a 4000×3000 photo is sent as 1568×1176." /><input type="number" min={256} max={4096} step={64} value={s.imageMaxEdge} onChange={(e) => set('imageMaxEdge', Number(e.target.value))} /></label>

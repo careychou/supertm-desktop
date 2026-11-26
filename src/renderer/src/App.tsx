@@ -42,6 +42,8 @@ export function App() {
   const [items, setItems] = useState<Item[]>([])
   const [busy, setBusy] = useState(false)
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
+  const [hidePinned, setHidePinned] = useState(true)
+  useEffect(() => { void window.desk.getSettings().then((s) => setHidePinned(s.hidePinnedInFolders !== false)) }, [])
   const [models, setModels] = useState<string[]>([])
   const [modelGroups, setModelGroups] = useState<ModelGroup[]>([])
   const [modelErr, setModelErr] = useState('')
@@ -333,7 +335,7 @@ export function App() {
     <CwdContext.Provider value={cwd ?? ''}>
     <div className={`app ${sidebar ? '' : 'nosidebar'}${resizing ? ' resizing' : ''}`} style={{ gridTemplateColumns: `${sidebar ? sideW : 0}px minmax(0, 1fr)` }}>
       <div className="side-slot" aria-hidden={!sidebar} inert={!sidebar || undefined}>
-        <Sidebar folders={folders} sessions={sessions} bookmarks={bookmarks} onCompact={openCompact} currentId={current?.id ?? null} busyIds={busyIds}
+        <Sidebar folders={folders} sessions={sessions} bookmarks={bookmarks} hidePinned={hidePinned} onCompact={openCompact} currentId={current?.id ?? null} busyIds={busyIds}
           onOpen={open} onNewChat={newChat} onDelete={del} onAddFolder={addFolder} onRemoveFolder={removeFolder} onFolderMemory={(p) => setMemEdit({ kind: 'folder', cwd: p })}
           onCollapse={() => setSidebar(false)} onSettings={() => { setSettingsTab(undefined); setShowSettings(true) }}
           appUpdate={appUpdate} onAppUpdate={() => { setSettingsTab('about'); setShowSettings(true) }} onUsage={() => setShowUsage(true)} usage={usage}
@@ -425,7 +427,7 @@ export function App() {
         )}
       </main>
       {showUsage && <UsageModal onClose={() => setShowUsage(false)} onOpenChat={(id) => void open(id)} />}
-      {showSettings && <SettingsModal initialTab={settingsTab} cwd={cwd} folders={folders.map((f) => f.path)} onClose={() => { setShowSettings(false); void refreshModels(); void refreshUsage(); void window.desk.getSettings().then((s) => { setDefaultEffort(s.reasoning); setDefaultMode(s.defaultMode); setCompactCfg({ mode: s.autoCompact, threshold: s.compactThreshold, keep: s.compactKeepRecent }) }) }} />}
+      {showSettings && <SettingsModal initialTab={settingsTab} cwd={cwd} folders={folders.map((f) => f.path)} onClose={() => { setShowSettings(false); void refreshModels(); void refreshUsage(); void window.desk.getSettings().then((s) => { setHidePinned(s.hidePinnedInFolders !== false); setDefaultEffort(s.reasoning); setDefaultMode(s.defaultMode); setCompactCfg({ mode: s.autoCompact, threshold: s.compactThreshold, keep: s.compactKeepRecent }) }) }} />}
       {compacting && <CompactModal session={compacting} keepRecentDefault={compactCfg.keep} onClose={() => setCompacting(null)}
         onDone={(m) => { setCompacting(null); flash(m) }} />}
       {pluginsFor && <PluginsModal folder={pluginsFor} onClose={() => { setPluginsFor(null); refreshReg() }} />}
