@@ -33,7 +33,7 @@ Contents: [1 Model adapter](#1-model-adapter-and-streaming) · [2 Attachments](#
 
 **Assembly** (`assemble.ts`): tool-call fragments arrive split across chunks; the `Assembler` concatenates `arguments` by tool-call `index`, fills missing ids, and produces one assistant `Message` with `content`, `tool_calls` and (engine-only) `reasoning`.
 
-**Errors** carry the HTTP status so the loop can decide to retry (once, 1.5 s later, only if nothing was streamed; 5xx, 429, network).
+**Errors** carry the HTTP status so the loop can decide to retry: up to four tries, 2/5/10 s apart, on 408, 409, 429, 5xx, provider "overloaded" errors and dropped connections, including a reply that dropped mid-stream (see `src/engine/retry.ts` and agent-framework.md).
 
 ### Model providers (`router.ts`, `shared/providers.ts`)
 

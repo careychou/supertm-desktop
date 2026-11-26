@@ -57,7 +57,7 @@ Details that matter:
 - **`callModel`** takes a `Semaphore` slot only around the streaming request, never while tools run. This means a parent that is waiting on a sub-agent does not hold a slot, so nested agents cannot deadlock the pool.
   - Deltas are merged by the `Assembler`: text and reasoning are concatenated, tool-call fragments are merged by `index`. If the provider omits tool-call ids, ids are generated.
   - It emits `text`, `reasoning` and `usage` events as they arrive.
-  - **Retry:** one retry after 1.5 s on HTTP 5xx, 429 or a network error, but only if nothing has been streamed yet (so the UI never shows duplicated text). Abort raises `AbortedError`, which is never retried.
+  - **Retry (`src/engine/retry.ts`):** up to four tries, 2, 5 and 10 s apart (±15% jitter), on a dropped connection (Node's `terminated` or `fetch failed`, a socket reset, a timeout), HTTP 408/409/429/5xx, or a provider "overloaded" error in the stream. This includes a reply that drops partway through: the reply is added to the conversation and its tools run only once it completes, so a retry just sends the same messages again. A `retry` event lets the chat replace the partial reply with a "Trying again in 2s (try 2 of 4)…" line, which goes away when the reply, a step or an error arrives. Other 4xx errors are not retried. After the last try the error names the real cause, e.g. `Lost the connection to the model 4 times in a row. Last error: terminated (other side closed, UND_ERR_SOCKET)`. Stop during a wait cancels at once (`AbortedError` is never retried). Sub-agents use the same loop.
 - **Max turns** ends the run with an error (`stopped after reaching the max of N turns`) rather than looping forever.
 
 ### Events

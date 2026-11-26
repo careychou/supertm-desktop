@@ -237,6 +237,7 @@ export function ItemList({ items, live, onFork }: { items: Item[]; live: boolean
           case 'tool': return null
           case 'agent': return <AgentCard it={it} />
           case 'error': return <div className="err">{it.text}</div>
+          case 'retry': return <div className="retry" role="status"><span className="spinner" /> {it.text}</div>
           case 'compact': return <CompactMarker it={it} />
         } })()
         return <div key={sg.i} className="item" data-turn={it.t === 'user' ? t : undefined}>{el}{forkBtn}</div>

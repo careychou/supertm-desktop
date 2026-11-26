@@ -32,6 +32,8 @@ export interface ManagerOptions {
   stateDir?: string
   /** Extra tools (MCP servers) filtered by the sub-agent's `tools` list. */
   dynamicTools?: (agentTools?: string[]) => ToolDef[]
+  /** Waits between tries of a failed model call (see loop.ts); default 2 s, 5 s, 10 s. */
+  retryDelaysMs?: number[]
 }
 
 let counter = 0
@@ -109,7 +111,7 @@ export class AgentManager implements AgentOps {
           agentId: id, model: this.o.model, adapter: this.o.adapter, sem: this.sem, hooks: this.o.hooks,
           tools, signal: controller.signal, maxTurns: () => this.o.maxTurnsSub, maxTokens: () => this.o.maxOutputTokens ?? 0, reasoning: this.o.reasoning,
           ctx: { cwd: this.o.cwd, depth: opts.depth, hooks: this.o.hooks, gate: this.gate, registry: this.o.registry, agents: this, shells: this.o.shells, stateDir: this.o.stateDir },
-          drainNotifications: () => this.drain(id)
+          drainNotifications: () => this.drain(id), retryDelaysMs: this.o.retryDelaysMs
         }, messages)
         info.status = 'completed'
       } catch (e: any) {

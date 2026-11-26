@@ -4,6 +4,7 @@ import type { ToolDef, ToolContext } from './tools/types'
 import { Assembler } from './adapter/assemble'
 import { toSchemas } from './tools'
 import type { Semaphore } from './semaphore'
+import { RETRY_DELAYS_MS, describeError, isNetworkError, isTransient, retryDelay, sleep } from './retry'
 
 export interface LoopOptions {
   agentId: string
@@ -23,17 +24,30 @@ export interface LoopOptions {
   drainNotifications?: () => string[]
   /** Returns user prompts queued while working, injected before the next model call. */
   drainInput?: () => Message[]
+  /** Waits between tries of a failed model call (default RETRY_DELAYS_MS); its length + 1 is the number of tries. For tests. */
+  retryDelaysMs?: number[]
 }
 
 export class AbortedError extends Error { constructor() { super('cancelled') } }
 
 type Reply = Extract<Message, { role: 'assistant' }> & { truncated?: boolean }
 
+/**
+ * One model call, tried up to MODEL_ATTEMPTS times (RETRY_DELAYS_MS + 1). A dropped connection, a timeout, rate limiting, a 5xx or
+ * a provider "overloaded" error is tried again after a short wait, even when part of the reply had already
+ * streamed: nothing is added to the conversation until a reply is complete, so a retry simply asks again.
+ * A `retry` event tells the view to drop what it streamed of the failed try. The last error keeps its
+ * real cause ("terminated (other side closed, UND_ERR_SOCKET)") and says how many tries were made.
+ */
 async function callModel(o: LoopOptions, messages: Message[]): Promise<Reply> {
   const release = await o.sem.acquire(o.signal)
   try {
+    const delays = o.retryDelaysMs ?? RETRY_DELAYS_MS
+    const attempts = delays.length + 1
     let lastErr: any
-    for (let attempt = 0; attempt < 2; attempt++) {
+    let tried = 0
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      tried = attempt
       const asm = new Assembler()
       const maxTokens = typeof o.maxTokens === 'function' ? o.maxTokens() : o.maxTokens
       let streamed = false
@@ -50,15 +64,25 @@ async function callModel(o: LoopOptions, messages: Message[]): Promise<Reply> {
       } catch (e: any) {
         if (o.signal.aborted) throw new AbortedError()
         lastErr = e
-        const retryable = !streamed && (e.status === undefined || e.status >= 500 || e.status === 429)
-        if (!retryable) break
-        await new Promise((r) => setTimeout(r, 1500))
+        if (!isTransient(e) || attempt === attempts) break
+        const delayMs = retryDelay(attempt, delays)
+        o.hooks.onEvent({ kind: 'retry', agentId: o.agentId, attempt: attempt + 1, of: attempts, delayMs, reason: describeError(e), discarded: streamed })
+        try { await sleep(delayMs, o.signal) } catch { throw new AbortedError() }
       }
     }
-    throw lastErr
+    throw modelError(lastErr, tried)
   } finally {
     release()
   }
+}
+
+/** The error a run ends with: the real cause, and how many tries were made when there was more than one. */
+function modelError(e: any, tried: number): Error {
+  const why = describeError(e)
+  const message = tried > 1
+    ? `${isNetworkError(e) ? 'Lost the connection to the model' : 'The model call failed'} ${tried} times in a row. Last error: ${why}`
+    : why
+  return Object.assign(new Error(message, { cause: e }), e?.status !== undefined ? { status: e.status } : {})
 }
 
 const TRUNCATED = 'your reply hit the output token limit, so this tool call was cut off and NOT run. Re-issue it with less content per call: write a large file in parts (write_file with append=true for each further part), or keep the reply shorter.'

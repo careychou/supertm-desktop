@@ -57,6 +57,11 @@ export type AgentEvent =
   | { kind: 'agent_end'; agentId: string; status: AgentStatus; finalText: string }
   | { kind: 'usage'; agentId: string; model?: string; prompt: number; completion: number; cached?: number; cacheWrite?: number }
   | { kind: 'error'; agentId: string; message: string }
+  /**
+   * A model call failed for a reason worth another try (dropped connection, timeout, 429, 5xx) and is tried
+   * again after `delayMs`. `discarded`: part of the failed reply had already streamed; a view drops it.
+   */
+  | { kind: 'retry'; agentId: string; attempt: number; of: number; delayMs: number; reason: string; discarded: boolean }
   /** A prompt queued while the agent was working has just been added to the conversation. */
   | { kind: 'user_input'; agentId: string; qid: string }
   /** Queued prompts discarded because the run was stopped or failed. */

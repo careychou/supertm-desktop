@@ -7,6 +7,8 @@ export type Item =
   | { t: 'tool'; agentId: string; callId: string; name: string; args: string; output?: string; ok?: boolean }
   | { t: 'agent'; agentId: string; name: string; mode: string; prompt: string; status: string; finalText: string; children: Item[] }
   | { t: 'error'; text: string }
+  /** A model call is being tried again; shown while it waits, removed once a reply, step or error arrives. */
+  | { t: 'retry'; agentId: string; text: string }
   | { t: 'compact'; auto: boolean; model?: string; summarized: number; dropped: number; before: number; after: number; summary: string; keptTurns?: number[]; summarizedTurns?: number[]; droppedTurns?: number[] }
 
 type AgentItem = Extract<Item, { t: 'agent' }>
@@ -36,9 +38,24 @@ function findTool(items: Item[], callId: string): Extract<Item, { t: 'tool' }> |
 }
 
 /** Applies an engine event to the item tree. Returns a new top-level array (children mutated in place on the clone). */
+/** Removes this agent's "trying again" note, if any. */
+function clearRetry(c: Item[], agentId: string) {
+  for (let i = c.length - 1; i >= 0; i--) { const it = c[i]; if (it.t === 'retry' && it.agentId === agentId) c.splice(i, 1) }
+}
+
 export function applyEvent(prev: Item[], e: AgentEvent): Item[] {
   const items: Item[] = structuredClone(prev)
+  if (e.kind === 'assistant_done' || e.kind === 'tool_start' || e.kind === 'error' || e.kind === 'agent_end') clearRetry(container(items, e.agentId), e.agentId)
   switch (e.kind) {
+    case 'retry': {
+      const c = container(items, e.agentId)
+      clearRetry(c, e.agentId)
+      // What the failed try streamed never reached the conversation: drop it.
+      const last = c[c.length - 1]
+      if (e.discarded && last?.t === 'assistant' && last.agentId === e.agentId && !last.closed) c.pop()
+      c.push({ t: 'retry', agentId: e.agentId, text: `${e.reason}. Trying again in ${Math.max(1, Math.round(e.delayMs / 1000))}s (try ${e.attempt} of ${e.of})…` })
+      break
+    }
     case 'text':
     case 'reasoning': {
       const c = container(items, e.agentId)
@@ -91,7 +108,8 @@ export function settle(items: Item[]): Item[] {
     if (it.t === 'agent') { if (it.status === 'running') it.status = 'cancelled'; walk(it.children) }
     if (it.t === 'tool' && it.output === undefined) { it.output = '(interrupted)'; it.ok = false }
   })
-  const c = structuredClone(items); walk(c); return c
+  const drop = (xs: Item[]): Item[] => xs.filter((it) => it.t !== 'retry').map((it) => (it.t === 'agent' ? { ...it, children: drop(it.children) } : it))
+  const c = drop(structuredClone(items)); walk(c); return c
 }
 
 export function runningBackground(items: Item[]): AgentItem[] {

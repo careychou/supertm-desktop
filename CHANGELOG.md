@@ -1,5 +1,14 @@
 # Release notes
 
+## 1.4.6
+
+### A dropped connection no longer ends the run ("terminated", "fetch failed")
+- When the connection to the model dropped partway through a reply, the whole run stopped with a bare **terminated**. A request that got no response (**fetch failed**) was tried only once more, after 1.5 seconds
+- Now the model call is tried up to **four times, 2, 5 and 10 seconds apart**, also when part of the reply had already streamed. The same goes for timeouts, rate limits (429), server errors (5xx) and "overloaded" errors. A request the provider rejected (other 4xx) is not retried
+- While it waits, the chat shows **"Trying again in 2s (try 2 of 4)…"** in place of the partial reply. Nothing is duplicated: the reply joins the conversation, and its tools run, only once it is complete
+- If every try fails, the error says why, e.g. *Lost the connection to the model 4 times in a row. Last error: terminated (other side closed, UND_ERR_SOCKET)*
+- Sub-agents retry the same way. Stop during the wait cancels at once
+
 ## 1.4.5
 
 ### Attachments: the model gets the file, not only its text (Settings → General → Attachments)
