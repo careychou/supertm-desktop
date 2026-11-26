@@ -268,7 +268,15 @@ button.danger { color: var(--fail); }
 .session .twisty { width: 14px; color: var(--muted); font-size: 11px; flex: none; }
 .session .fork-mark { width: 14px; color: #8c959f; font-size: 13px; flex: none; text-align: center; }
 .session .dot { margin: 0 3px; }
-.session .dot.busy { background: var(--blue); animation: pulse 1s infinite alternate; }
+/* Running chat: a spinning ring at the row's end, the same for a single chat, a parent or a sub-chat. A collapsed row shows a
+   dashed ring (with a count when more than one) for running chats hidden under it. */
+.session.running { background: #eef5ff; }
+.session.running.on { background: #e1edff; }
+.session.running .title { font-weight: 500; }
+.run { position: relative; flex: none; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #cfe1fb; border-top-color: var(--blue); animation: spin .8s linear infinite; }
+.run.inside { border-style: dashed; border-color: var(--blue); animation-duration: 2.4s; }
+.run b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 8px; font-weight: 700; color: var(--blue); animation: spin 2.4s linear infinite reverse; }
+.folder-row .run { margin-right: 2px; }
 .session .count { font-size: 11px; color: var(--muted); background: #e6e8eb; border-radius: 8px; padding: 0 6px; }
 .session.empty-hint { color: var(--muted); font-style: italic; padding-left: 32px; }
 .add-folder { display: block; width: 100%; text-align: left; padding: 8px 10px; margin-top: 4px; border-radius: 8px; color: var(--muted); }

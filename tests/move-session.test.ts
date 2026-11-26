@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { Store, type SessionRow } from '../src/main/store'
-import { buildTree, canNest, shownParent } from '../src/shared/fork'
+import { buildTree, canNest, pinnedAncestor, shownParent, subtreeIds, subtreeOf } from '../src/shared/fork'
 
 const row = (id: string, updated_at: number, extra: Partial<SessionRow> = {}): SessionRow =>
   ({ id, title: id, cwd: '/w', model: 'm', created_at: 1, updated_at, parent_id: null, fork_turn: null, ...extra })
@@ -50,5 +50,36 @@ describe('moving a chat under another chat', () => {
     expect(shownParent(rows, 'k')).toBeNull()
     expect(canNest(rows, 'm', 'k')).toBe(true)
     expect(canNest(rows, 'k', 'p')).toBe(false)
+  })
+})
+
+describe('bookmarks hold whole trees', () => {
+  const pins = () => store.listBookmarks().filter((b) => b.kind === 'pin').map((b) => b.session_id).sort()
+  let n = 0
+  const id = () => `pin${++n}`
+
+  it('pinning a parent covers its children: their own pins go', () => {
+    store.pinSession('f', null, null, false, id)
+    store.pinSession('c', null, null, false, id)
+    expect(pins()).toEqual(['c'])
+    expect(subtreeIds(subtreeOf(store.listSessions(), 'c')!)).toEqual(['c', 'f'])
+  })
+  it('filing a pinned chat under another pinned chat merges it into that tree', () => {
+    store.pinSession('a', null, null, false, id); store.pinSession('c', null, null, false, id)
+    expect(store.placeSession('c', 'a')).toBe(true)
+    expect(pins()).toEqual(['a'])
+    expect(subtreeIds(subtreeOf(store.listSessions(), 'a')!)).toEqual(['a', 'c', 'f'])
+  })
+  it('pinning a chat inside a pinned tree moves it out, with its own children', () => {
+    store.placeSession('c', 'a'); store.pinSession('a', null, null, false, id)
+    store.pinSession('c', null, null, false, id)
+    expect(pins()).toEqual(['a', 'c'])
+    expect(shownParent(store.listSessions(), 'c')).toBeNull()
+    expect(shape()).toEqual(['a', 'b', { c: ['f'] }])
+  })
+  it('finds the nearest pinned ancestor', () => {
+    store.placeSession('c', 'a')
+    expect(pinnedAncestor(store.listSessions(), new Set(['a']), 'f')).toBe('a')
+    expect(pinnedAncestor(store.listSessions(), new Set(['a']), 'a')).toBeNull()
   })
 })

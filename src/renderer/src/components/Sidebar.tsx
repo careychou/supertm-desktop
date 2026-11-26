@@ -1,7 +1,7 @@
 import { UsageRing, fmtUsd } from './UsageModal'
 import { useRef, useState } from 'react'
 import type { BookmarkRow, FolderRow, SessionRow } from '../../../shared/api'
-import { buildTree, canNest, isWithin, shownParent, type TreeNode } from '../../../shared/fork'
+import { buildTree, canNest, isWithin, pinnedAncestor, shownParent, subtreeIds, subtreeOf, type TreeNode } from '../../../shared/fork'
 import { MoveModal } from './MoveModal'
 import { Menu, at, type MenuEntry, type MenuState } from './Menu'
 import { BRAND } from '../../../shared/brand'
@@ -47,7 +47,16 @@ type Ctx = Props & {
   setOver(o: { key: string; zone: Zone } | null): void
   /** Opens the "Move under another chat" picker. */
   setMoving(s: SessionRow | null): void
+  /** Session ids that have a pin. */
+  pinned: Set<string | null>
 }
+
+/** Spinning ring shown while a chat runs. `inside` = collapsed row whose running chats are hidden beneath it. */
+function Running({ n, inside }: { n: number; inside?: boolean }) {
+  if (!n) return null
+  return <span className={`run${inside ? ' inside' : ''}`} title={inside ? `${n} running inside` : 'Running…'}>{inside && n > 1 && <b>{n}</b>}</span>
+}
+const busyCount = (c: Ctx, ids: string[]) => ids.filter((id) => c.busyIds.has(id)).length
 
 /** Where on a row the pointer is: top/bottom half, or (for containers) top quarter / middle / bottom quarter. */
 function zoneOf(e: React.DragEvent, container: boolean): Zone {
@@ -58,7 +67,7 @@ function zoneOf(e: React.DragEvent, container: boolean): Zone {
 }
 
 /** Drag/drop props for a row. `accept` returns the allowed zone (or null) for the current drag; `drop` performs it. */
-function dnd(c: Ctx, key: string, start: Drag, accept: (d: Drag, z: Zone) => Zone | null, drop: (d: Drag, z: Zone) => void, container = false) {
+function dnd(c: Ctx, key: string, start: Drag, accept: (d: Drag, z: Zone) => Zone | null, drop: (d: Drag, z: Zone) => void, container: boolean | ((d: Drag) => boolean) = false) {
   const cls = c.over?.key === key ? ` drop-${c.over.zone}` : ''
   return {
     cls,
@@ -69,7 +78,7 @@ function dnd(c: Ctx, key: string, start: Drag, accept: (d: Drag, z: Zone) => Zon
       onDragOver: (e: React.DragEvent) => {
         const d = c.drag.current
         if (!d) return
-        const z = accept(d, zoneOf(e, container))
+        const z = accept(d, zoneOf(e, typeof container === 'function' ? container(d) : container))
         if (!z) { if (c.over?.key === key) c.setOver(null); return }
         e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'
         if (c.over?.key !== key || c.over.zone !== z) c.setOver({ key, zone: z })
@@ -110,16 +119,26 @@ function folderTargets(bms: BookmarkRow[], exclude?: string): Array<{ id: string
   return out
 }
 
-function sessionMenu(s: SessionRow, c: Ctx, extra: MenuEntry[] = []): MenuEntry[] {
-  const pinned = c.bookmarks.some((b) => b.kind === 'pin' && b.session_id === s.id)
-  const move: MenuEntry[] = [
+function moveEntries(s: SessionRow, c: Ctx): MenuEntry[] {
+  return [
     ...(c.sessions.some((x) => x.id !== s.id && canNest(c.sessions, s.id, x.id)) ? [{ label: '⑂ Move under another chat…', onClick: () => c.setMoving(s) }] : []),
     ...(shownParent(c.sessions, s.id) ? [{ label: '⇤ Move to top level', onClick: () => void window.desk.moveSession(s.id, null) }] : [])
   ]
+}
+
+function sessionMenu(s: SessionRow, c: Ctx, extra: MenuEntry[] = []): MenuEntry[] {
+  const pinned = c.pinned.has(s.id)
+  const holder = pinnedAncestor(c.sessions, c.pinned, s.id)
+  const holderTitle = holder ? c.sessions.find((x) => x.id === holder)?.title : ''
+  const kids = subtreeOf(c.sessions, s.id)?.children.length ?? 0
+  const what = kids ? ' (with its sub-chats)' : ''
+  // A pin shows the chat's whole tree, so a chat inside a pinned tree is pinned on its own only by moving it out.
+  const pinLabel = holder ? `☆ Pin on its own (moves out of “${holderTitle}”)` : `☆ Pin to Bookmarks${what}`
+  const move = moveEntries(s, c)
   return [
     { label: '✎ Rename', onClick: () => c.setEditing(`s:${s.id}`) },
-    pinned ? { label: '★ Pinned', onClick: () => {}, disabled: true } : { label: '☆ Pin to Bookmarks', onClick: () => window.desk.pinSession(s.id, null) },
-    ...folderTargets(c.bookmarks).slice(1).filter(() => !pinned).map((f) => ({ label: `☆ Pin to ${f.label.trim()}`, onClick: () => window.desk.pinSession(s.id, f.id) })),
+    pinned ? { label: '★ Pinned', onClick: () => {}, disabled: true } : { label: pinLabel, onClick: () => window.desk.pinSession(s.id, null) },
+    ...folderTargets(c.bookmarks).slice(1).filter(() => !pinned && !holder).map((f) => ({ label: `☆ Pin to ${f.label.trim()}${what}`, onClick: () => window.desk.pinSession(s.id, f.id) })),
     ...extra,
     ...(move.length ? ['sep' as const, ...move] : []),
     'sep',
@@ -130,38 +149,52 @@ function sessionMenu(s: SessionRow, c: Ctx, extra: MenuEntry[] = []): MenuEntry[
   ]
 }
 
-function SessionNode({ node, depth, c }: { node: TreeNode<SessionRow>; depth: number; c: Ctx }) {
+/** Session id a drag carries: a dragged chat, or the chat of a dragged pin. */
+const dragSession = (c: Ctx, dr: Drag) => (dr.kind === 'session' ? dr.id : c.bookmarks.find((b) => b.id === dr.id && b.kind === 'pin')?.session_id ?? null)
+/** Whether the dragged chat (or pinned chat) may be filed under chat `s`. */
+const canDropInto = (c: Ctx, dr: Drag, s: SessionRow) => {
+  const id = dragSession(c, dr)
+  return !!id && id !== s.id && canNest(c.sessions, id, s.id) && shownParent(c.sessions, id) !== s.id
+}
+
+/** A chat row and its sub-chats. `keyPrefix` keeps rows unique when the same chat is drawn in Bookmarks and in its folder. */
+function SessionNode({ node, depth, c, keyPrefix = 's' }: { node: TreeNode<SessionRow>; depth: number; c: Ctx; keyPrefix?: string }) {
   const [open, setOpen] = useState(true)
   const s = node.row
   const hasKids = node.children.length > 0
   const menu = (e: React.MouseEvent) => c.setMenu(at(e, sessionMenu(s, c)))
-  const d = dnd(c, `s:${s.id}`, { kind: 'session', id: s.id },
+  const d = dnd(c, `${keyPrefix}:${s.id}`, { kind: 'session', id: s.id },
     (dr, z) => {
-      if (dr.kind !== 'session' || dr.id === s.id) return null
-      const o = c.sessions.find((x) => x.id === dr.id)
+      const id = dragSession(c, dr)
+      if (!id || id === s.id) return null
+      const o = c.sessions.find((x) => x.id === id)
       if (!o || o.cwd !== s.cwd) return null
       // Middle of a row: file the dragged chat under this one. Top or bottom edge: place it beside this one, at this one's level.
-      if (z === 'into') return canNest(c.sessions, dr.id, s.id) && shownParent(c.sessions, dr.id) !== s.id ? z : null
-      return canNest(c.sessions, dr.id, shownParent(c.sessions, s.id)) ? z : null
+      if (z === 'into') return canDropInto(c, dr, s) ? z : null
+      return canNest(c.sessions, id, shownParent(c.sessions, s.id)) ? z : null
     },
     (dr, z) => {
-      if (z === 'into') { setOpen(true); void window.desk.moveSession(dr.id, s.id) }
-      else void window.desk.moveSession(dr.id, shownParent(c.sessions, s.id), s.id, z === 'before')
-    }, true)
+      const id = dragSession(c, dr)!
+      if (z === 'into') { setOpen(true); void window.desk.moveSession(id, s.id) }
+      else void window.desk.moveSession(id, shownParent(c.sessions, s.id), s.id, z === 'before')
+    }, (dr) => canDropInto(c, dr, s))
+  const self = c.busyIds.has(s.id) ? 1 : 0
+  const hidden = hasKids && !open ? busyCount(c, subtreeIds(node)) - self : 0
   return (
     <>
-      <div className={`session ${c.currentId === s.id ? 'on' : ''}${d.cls}`} {...d.props} style={{ paddingLeft: 12 + depth * 18 }} onClick={() => c.onOpen(s.id)}
+      <div className={`session ${c.currentId === s.id ? 'on' : ''}${self ? ' running' : ''}${d.cls}`} {...d.props} style={{ paddingLeft: 12 + depth * 18 }} onClick={() => c.onOpen(s.id)}
         onDoubleClick={() => c.setEditing(`s:${s.id}`)} onContextMenu={menu} title={s.title}>
         {hasKids
           ? <button className="twisty" onClick={(e) => { e.stopPropagation(); setOpen(!open) }}>{open ? '▾' : '▸'}</button>
-          : depth > 0 ? <span className="fork-mark">⑂</span> : <span className={`dot ${c.busyIds.has(s.id) ? 'busy' : ''}`} />}
+          : depth > 0 ? <span className="fork-mark">⑂</span> : <span className="dot" />}
         {c.editing === `s:${s.id}`
           ? <InlineEdit value={s.title} onDone={(v) => { c.setEditing(null); if (v) void window.desk.renameSession(s.id, v) }} />
           : <span className="title">{s.title}</span>}
         {hasKids && !open && <span className="count">{node.children.length}</span>}
+        {self ? <Running n={1} /> : <Running n={hidden} inside />}
         <button className="more" title="More actions" onClick={menu}>⋯</button>
       </div>
-      {open && node.children.map((ch) => <SessionNode key={ch.row.id} node={ch} depth={depth + 1} c={c} />)}
+      {open && node.children.map((ch) => <SessionNode key={ch.row.id} node={ch} depth={depth + 1} c={c} keyPrefix={keyPrefix} />)}
     </>
   )
 }
@@ -173,46 +206,75 @@ function BookmarkNode({ b, depth, c }: { b: BookmarkRow; depth: number; c: Ctx }
       .map((f) => ({ label: `→ Move to ${f.label.trim()}`, onClick: () => window.desk.updateBookmark(b.id, { parent_id: f.id }) }))
   ]
   const isFolder = b.kind === 'folder'
+  const pinS = b.kind === 'pin' ? c.sessions.find((x) => x.id === b.session_id) : undefined
   const d = dnd(c, `b:${b.id}`, { kind: 'bookmark', id: b.id },
     (dr, z) => {
       if (dr.kind === 'bookmark') {
         if (dr.id === b.id) return null
-        const target = z === 'into' ? b.id : b.parent_id
+        const target = z === 'into' ? (isFolder ? b.id : null) : b.parent_id
         if (target && isWithin(c.bookmarks, dr.id, target)) return null
       }
       return z
     },
     (dr, z) => {
+      // Middle of a pin: file the dragged chat (with its sub-chats) under the pinned chat. Its own pin goes, as it now shows in this tree.
+      if (z === 'into' && pinS) {
+        if (b.collapsed) void window.desk.updateBookmark(b.id, { collapsed: 0 })
+        void window.desk.moveSession(dragSession(c, dr)!, pinS.id)
+        return
+      }
       const parent = z === 'into' ? b.id : b.parent_id
       const targetId = z === 'into' ? null : b.id
       if (dr.kind === 'session') void window.desk.pinSession(dr.id, parent, targetId, z === 'before')
       else void window.desk.placeBookmark(dr.id, parent, targetId, z === 'before')
       if (z === 'into' && b.collapsed) void window.desk.updateBookmark(b.id, { collapsed: 0 })
-    }, isFolder)
+    }, isFolder || ((dr) => !!pinS && canDropInto(c, dr, pinS)))
   if (b.kind === 'pin') {
-    const s = c.sessions.find((x) => x.id === b.session_id)
-    if (!s) return null
+    const s = pinS
+    // Already drawn inside another pin's tree (pins are pruned to one per tree; this covers the moment before that).
+    if (!s || pinnedAncestor(c.sessions, c.pinned, s.id)) return null
+    const tree = subtreeOf(c.sessions, s.id)
+    const kids = tree?.children ?? []
+    const open = !b.collapsed
+    const nest = moveEntries(s, c)
     const menu = (e: React.MouseEvent) => c.setMenu(at(e, [
       { label: '✎ Rename', onClick: () => c.setEditing(`b:${b.id}`) },
-      { label: '★ Unpin', onClick: () => window.desk.removeBookmark(b.id) },
-      ...(move.length ? ['sep' as const, ...move] : []), 'sep',
+      { label: kids.length ? '★ Unpin (with its sub-chats)' : '★ Unpin', onClick: () => window.desk.removeBookmark(b.id) },
+      ...(move.length ? ['sep' as const, ...move] : []),
+      ...(nest.length ? ['sep' as const, ...nest] : []), 'sep',
       { label: '⇪ Share / export…', onClick: () => c.onShare(s) },
       { label: '⇲ Compact history…', onClick: () => c.onCompact(s) }
     ]))
+    const self = c.busyIds.has(s.id) ? 1 : 0
+    const hidden = kids.length && !open && tree ? busyCount(c, subtreeIds(tree)) - self : 0
     return (
-      <div className={`session pin ${c.currentId === s.id ? 'on' : ''}${d.cls}`} {...d.props} style={pad} onClick={() => c.onOpen(s.id)}
-        onDoubleClick={() => c.setEditing(`b:${b.id}`)} onContextMenu={menu} title={`${s.title}\n${s.cwd}`}>
-        <span className="pin-mark">★</span>
-        {c.editing === `b:${b.id}`
-          ? <InlineEdit value={s.title} onDone={(v) => { c.setEditing(null); if (v) void window.desk.renameSession(s.id, v) }} />
-          : <span className="title">{s.title}</span>}
-        <span className="pin-folder">{base(s.cwd)}</span>
-        <button className="more" title="More actions" onClick={menu}>⋯</button>
-      </div>
+      <>
+        <div className={`session pin ${c.currentId === s.id ? 'on' : ''}${self ? ' running' : ''}${d.cls}`} {...d.props} style={pad} onClick={() => c.onOpen(s.id)}
+          onDoubleClick={() => c.setEditing(`b:${b.id}`)} onContextMenu={menu} title={`${s.title}\n${s.cwd}`}>
+          {kids.length
+            ? <button className="twisty" title={open ? 'Hide sub-chats' : 'Show sub-chats'} onClick={(e) => { e.stopPropagation(); void window.desk.updateBookmark(b.id, { collapsed: open ? 1 : 0 }) }}>{open ? '▾' : '▸'}</button>
+            : <span className="twisty" />}
+          <span className="pin-mark">★</span>
+          {c.editing === `b:${b.id}`
+            ? <InlineEdit value={s.title} onDone={(v) => { c.setEditing(null); if (v) void window.desk.renameSession(s.id, v) }} />
+            : <span className="title">{s.title}</span>}
+          {kids.length > 0 && !open && <span className="count">{kids.length}</span>}
+          <span className="pin-folder">{base(s.cwd)}</span>
+          {self ? <Running n={1} /> : <Running n={hidden} inside />}
+          <button className="more" title="More actions" onClick={menu}>⋯</button>
+        </div>
+        {open && kids.map((ch) => <SessionNode key={ch.row.id} node={ch} depth={depth + 2} c={c} keyPrefix={`p${b.id}`} />)}
+      </>
     )
   }
   const kids = c.bookmarks.filter((x) => x.parent_id === b.id)
   const open = !b.collapsed
+  const inFolder = (id: string): string[] => c.bookmarks.filter((x) => x.parent_id === id).flatMap((x) => {
+    if (x.kind === 'folder') return inFolder(x.id)
+    const t = x.session_id ? subtreeOf(c.sessions, x.session_id) : null
+    return t ? subtreeIds(t) : []
+  })
+  const hidden = open ? 0 : busyCount(c, inFolder(b.id))
   const menu = (e: React.MouseEvent) => c.setMenu(at(e, [
     { label: '✎ Rename folder', onClick: () => c.setEditing(`b:${b.id}`) },
     { label: '＋ New subfolder', onClick: () => window.desk.addBookmarkFolder('New folder', b.id) },
@@ -229,6 +291,7 @@ function BookmarkNode({ b, depth, c }: { b: BookmarkRow; depth: number; c: Ctx }
           ? <InlineEdit value={b.name ?? ''} onDone={(v) => { c.setEditing(null); if (v) void window.desk.updateBookmark(b.id, { name: v }) }} />
           : <span className="title">{b.name}</span>}
         {!open && kids.length > 0 && <span className="count">{kids.length}</span>}
+        <Running n={hidden} inside />
         <button className="more" title="More actions" onClick={menu}>⋯</button>
       </div>
       {open && (kids.length
@@ -258,6 +321,7 @@ function FolderGroup({ folder, sessions, c }: { folder: FolderRow; sessions: Ses
       <div className={`folder-row${d.cls}`} onDragOver={d.props.onDragOver} onDragLeave={d.props.onDragLeave} onDrop={d.props.onDrop} onClick={() => setOpen(!open)} onContextMenu={menu} title={folder.path}>
         <span className="folder-icon">{open ? '📂' : '📁'}</span>
         <span className="title">{base(folder.path)}</span>
+        {!open && <Running n={busyCount(c, sessions.map((x) => x.id))} inside />}
         {c.pluginUpdates?.has(folder.path) && <button className="tm-badge" title="Plugin updates available. Click to review." onClick={(e) => { e.stopPropagation(); c.onPlugins?.(folder.path) }}>⬆</button>}
         {hasMem && <button className="folder-mem" title="Folder memory: shared by every chat in this folder. Click to edit." onClick={(e) => { e.stopPropagation(); c.onFolderMemory(folder.path) }}>🗂</button>}
         <button className="folder-act" title="New chat in this folder" onClick={(e) => { e.stopPropagation(); c.onNewChat(folder.path) }}>＋</button>
@@ -277,7 +341,8 @@ export function Sidebar(p: Props) {
   const drag = useRef<Drag | null>(null)
   const [over, setOver] = useState<{ key: string; zone: Zone } | null>(null)
   const [moving, setMoving] = useState<SessionRow | null>(null)
-  const c: Ctx = { ...p, setMenu, editing, setEditing, drag, over, setOver, setMoving }
+  const pinned = new Set(p.bookmarks.filter((b) => b.kind === 'pin').map((b) => b.session_id))
+  const c: Ctx = { ...p, setMenu, editing, setEditing, drag, over, setOver, setMoving, pinned }
   const bmRoot = dnd(c, 'bm-root', { kind: 'bookmark', id: '' }, () => 'into', (dr) => {
     setBmOpen(true)
     if (dr.kind === 'session') void window.desk.pinSession(dr.id, null, null, false)
@@ -296,6 +361,7 @@ export function Sidebar(p: Props) {
             onClick={() => setBmOpen(!bmOpen)} title="Drop a chat here to pin it">
             <span className="folder-icon">★</span>
             <span className="title">Bookmarks</span>
+            {!bmOpen && <Running n={busyCount(c, [...pinned].flatMap((id) => { const t = id ? subtreeOf(p.sessions, id) : null; return t ? subtreeIds(t) : [] }))} inside />}
             <button className="folder-act" title="New bookmark folder" onClick={(e) => { e.stopPropagation(); setBmOpen(true); void window.desk.addBookmarkFolder('New folder', null) }}>＋</button>
           </div>
           {bmOpen && (top.length

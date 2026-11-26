@@ -93,7 +93,25 @@ export function canNest<T extends Nestable>(rows: T[], id: string, parent: strin
   return !!p && p.cwd === r.cwd && !isWithin(rows, id, parent)
 }
 
+/** The nearest chat above `id` (as drawn in its folder) that is in `pinned`, or null. A pin shows its chat's whole tree, so such a chat is already in Bookmarks. */
+export function pinnedAncestor<T extends Nestable>(rows: T[], pinned: Set<string | null>, id: string): string | null {
+  for (let cur = shownParent(rows, id), n = 0; cur && n < 1000; cur = shownParent(rows, cur), n++) if (pinned.has(cur)) return cur
+  return null
+}
+
 export interface TreeNode<T> { row: T; children: TreeNode<T>[] }
+
+/** Ids of the node and every chat nested under it. */
+export function subtreeIds<T extends { id: string }>(n: TreeNode<T>): string[] { return [n.row.id, ...n.children.flatMap(subtreeIds)] }
+
+/** The subtree rooted at `id` as drawn in its working folder, or null if the chat is missing. */
+export function subtreeOf<T extends Nestable & Orderable>(rows: T[], id: string): TreeNode<T> | null {
+  const r = rows.find((x) => x.id === id)
+  if (!r) return null
+  const inFolder = rows.filter((x) => x.cwd === r.cwd).map((x) => (shownParent(rows, x.id) === (x.parent_id ?? null) ? x : { ...x, parent_id: null }))
+  const find = (ns: TreeNode<T>[]): TreeNode<T> | null => { for (const n of ns) { if (n.row.id === id) return n; const f = find(n.children); if (f) return f } return null }
+  return find(buildTree(inFolder))
+}
 
 /** Builds a forest from rows with id/parent_id (siblings in display order); orphans (missing parent) become roots. */
 export function buildTree<T extends { id: string; parent_id: string | null } & Orderable>(rows: T[]): TreeNode<T>[] {

@@ -1,5 +1,13 @@
 # Release notes
 
+## 1.4.7
+
+### Bookmarks hold whole chat trees, and running chats are easy to spot
+- **A pin shows its sub-chats.** A pinned chat lists its live sub-chat tree under it, with a ▾ to fold it. Pinning a chat (or dragging it into Bookmarks) brings the chat and all of its sub-chats. If one of those sub-chats already had its own pin, that pin is folded into the new one
+- **Nest chats inside Bookmarks.** Drop a chat or pin onto the middle of a pinned chat to make it a sub-chat. It's the same link as in the folder view, so both views stay in sync (only within the same working folder). The pin menu also has **Move under another chat…**
+- **Pin on its own:** a sub-chat inside a pinned tree can be pinned separately. This moves it out of its parent
+- **Running indicator:** a running chat now shows a spinning ring and a tinted row, whether it's a single chat or a sub-chat at any depth. When the running chat is hidden inside a folded chat, pin, bookmark folder, working folder or the Bookmarks section, the folded row shows a dashed ring with the number of running chats inside
+
 ## 1.4.6
 
 ### A dropped connection no longer ends the run ("terminated", "fetch failed")

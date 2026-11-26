@@ -3,7 +3,7 @@ import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { BRAND } from '../shared/brand'
 import type { Message } from '../engine/types'
-import { canNest, isWithin, liveTurnMap, orderRows, reorderIds, shownParent } from '../shared/fork'
+import { canNest, isWithin, liveTurnMap, orderRows, pinnedAncestor, reorderIds, shownParent } from '../shared/fork'
 import { splitHistoryTurns } from '../engine/compact'
 import { entriesFromItems, entryOf, ftsQuery, type RecallHit, type RecallScope } from '../engine/recall'
 
@@ -101,16 +101,20 @@ export class Store {
    * Files a chat under `parent` (null = top of its working folder); its own children come along. With `targetId` it is placed
    * before/after that sibling, otherwise it is listed first. Refuses another folder's chat and a chat's own subtree.
    * A chat that changes parent stops claiming a fork turn, since it was not forked from the new parent.
+   * A chat that lands under a pinned chat loses its own pin: it is shown inside that pin's tree.
    */
   placeSession(id: string, parent: string | null, targetId: string | null = null, before = false): boolean {
     const all = this.listAllSessions()
     const row = all.find((s) => s.id === id)
     if (!row || !canNest(all, id, parent)) return false
     if (shownParent(all, id) !== parent || (row.parent_id ?? null) !== parent) this.db.prepare('UPDATE sessions SET parent_id = ?, fork_turn = NULL WHERE id = ?').run(parent, id)
-    if (!targetId) { this.db.prepare('UPDATE sessions SET sort_order = NULL WHERE id = ?').run(id); return true }
-    const after = this.listAllSessions()
-    const sibs = orderRows(after.filter((s) => s.cwd === row.cwd && s.id !== id && shownParent(after, s.id) === parent))
-    this.setOrder(reorderIds(sibs.map((s) => s.id), id, targetId, before))
+    if (!targetId) this.db.prepare('UPDATE sessions SET sort_order = NULL WHERE id = ?').run(id)
+    else {
+      const after = this.listAllSessions()
+      const sibs = orderRows(after.filter((s) => s.cwd === row.cwd && s.id !== id && shownParent(after, s.id) === parent))
+      this.setOrder(reorderIds(sibs.map((s) => s.id), id, targetId, before))
+    }
+    this.prunePins()
     return true
   }
 
@@ -140,6 +144,30 @@ export class Store {
     this.db.prepare('UPDATE bookmarks SET parent_id = ? WHERE id = ?').run(parent, id)
     const sibs = all.filter((b) => b.parent_id === parent && b.id !== id).map((b) => b.id)
     this.setBookmarkOrder(reorderIds(sibs, id, targetId, before))
+  }
+  /**
+   * Pins `sessionId` with its whole tree: a pin shows every chat nested under its chat, so pins of those chats are dropped.
+   * A chat already shown inside another pin's tree is first moved to the top of its folder, so it is listed in one place only.
+   */
+  pinSession(sessionId: string, parent: string | null, targetId: string | null, before: boolean, newId: () => string): string | undefined {
+    const all = this.listAllSessions()
+    if (!all.some((s) => s.id === sessionId)) return
+    const pinned = new Set(this.listBookmarks().filter((b) => b.kind === 'pin').map((b) => b.session_id))
+    if (pinnedAncestor(all, pinned, sessionId)) this.placeSession(sessionId, null)
+    let pid = this.pinId(sessionId)
+    if (!pid) { pid = newId(); this.addBookmark({ id: pid, kind: 'pin', name: null, session_id: sessionId, parent_id: parent }) }
+    this.placeBookmark(pid, parent, targetId, before)
+    this.prunePins()
+    return pid
+  }
+  /** Drops pins whose chat is nested under another pinned chat (it is already shown inside that pin's tree). */
+  prunePins(): number {
+    const all = this.listAllSessions()
+    const pins = this.listBookmarks().filter((b) => b.kind === 'pin')
+    const pinned = new Set(pins.map((b) => b.session_id))
+    const extra = pins.filter((b) => b.session_id && pinnedAncestor(all, pinned, b.session_id))
+    for (const b of extra) this.db.prepare('DELETE FROM bookmarks WHERE id = ?').run(b.id)
+    return extra.length
   }
   pinId(sessionId: string): string | undefined {
     return (this.db.prepare("SELECT id FROM bookmarks WHERE kind = 'pin' AND session_id = ?").get(sessionId) as any)?.id

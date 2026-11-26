@@ -296,9 +296,7 @@ function registerIpc() {
     return ok
   })
   ipcMain.handle('pinSession', (_e, sessionId: string, parentId: string | null, targetId: string | null = null, before = false) => {
-    let pid = store.pinId(sessionId)
-    if (!pid) { pid = randomUUID(); store.addBookmark({ id: pid, kind: 'pin', name: null, session_id: sessionId, parent_id: parentId }) }
-    store.placeBookmark(pid, parentId, targetId, before); pushSessions()
+    store.pinSession(sessionId, parentId, targetId, before, randomUUID); pushSessions()
   })
   ipcMain.handle('placeBookmark', (_e, id: string, parentId: string | null, targetId: string | null, before: boolean) => { store.placeBookmark(id, parentId, targetId, before); pushSessions() })
   ipcMain.handle('addBookmarkFolder', (_e, name: string, parentId: string | null) => { store.addBookmark({ id: randomUUID(), kind: 'folder', name: name.trim() || 'New folder', session_id: null, parent_id: parentId }); pushSessions() })
@@ -518,6 +516,7 @@ app.whenReady().then(() => {
   settings = loadSettings()
   setToolLimits(settings)
   store = new Store(dataHome)
+  store.prunePins()
   setTimeout(backfillRecall, 3000)
   registerIpc()
   plugins = registerPlugins(ipcMain, { dataHome, push, folders: () => store.listFolders().map((f) => f.path) })
