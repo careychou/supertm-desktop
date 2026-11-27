@@ -22,7 +22,7 @@ import { prepareAttachment, type AttachInput } from './attachments'
 import type { Attachment } from '../engine/content'
 import { exportSessions, importSessions, resolveSyncFile, scanSessions } from './sync'
 import type { ExternalSource } from '../shared/sync'
-import { externalDefaults, importExternal, scanClaude, scanCopilot, copilotRoot } from './import-external'
+import { externalDefaults, importExternal, scanClaude, scanCopilot, copilotRoot, originOf } from './import-external'
 import { azureLogin, azureUsageProvider, cancelAzureLogin, getAzureUsage, getLocalUsage, getProjectUsage, loadPricing, usageProvider } from './usage'
 import { registerPlugins } from './plugins'
 import { addedFiles, draftSkill, findingsFor, readSkillFile, skillsRoot, writeSkill, type SkillFileOut } from './skill-export'
@@ -442,11 +442,16 @@ function registerIpc() {
   ipcMain.handle('importScan', async (_e, kind: ExternalSource, dir: string) => {
     const root = kind === 'copilot' ? copilotRoot(dir) : dir
     const p = progress('scan')
-    return { root, sessions: kind === 'copilot' ? await scanCopilot(root, p) : await scanClaude(root, p) }
+    return { root, sessions: kind === 'copilot' ? await scanCopilot(root, p, store) : await scanClaude(root, p, store) }
   })
-  ipcMain.handle('importExternal', async (_e, kind: ExternalSource, root: string, ids: string[], dest?: string) => {
+  ipcMain.handle('importExternal', async (_e, kind: ExternalSource, root: string, ids: string[], dest?: string, choices: Record<string, 'overwrite' | 'fork' | 'skip'> = {}) => {
+    // a chat imported before and now overwritten must not keep running on its old history
+    const over = Object.entries(choices).filter(([, c]) => c === 'overwrite').map(([id]) => store.findImported(originOf(kind, id))?.id).filter((x): x is string => !!x)
+    for (const id of over) { const l = live.get(id); if (l?.isBusy) throw new Error('A chat you are overwriting is still running; stop it first.') }
+    for (const id of over) { live.get(id)?.dispose(); live.delete(id) }
     const p = progress('import')
-    const r = await importExternal(store, kind, root, ids, settings.defaultModel, dest, p)
+    const r = await importExternal(store, kind, root, ids, settings.defaultModel, dest, p, choices)
+    for (const id of over) { try { store.clearTurnIndex(id) } catch { /* best-effort */ } }
     p(ids.length, ids.length)
     pushSessions()
     backfillRecall()

@@ -38,7 +38,19 @@ function copilotFixture() {
     { type: 'user.message', data: { content: 'second ask' } },
     { type: 'assistant.message', data: { content: 'Done.' } }
   ])
+  // the log is no newer than workspace.yaml unless a test says so
+  const at = new Date('2026-01-04T00:00:00Z')
+  fs.utimesSync(path.join(d, 'events.jsonl'), at, at)
   return root
+}
+
+/** The GitHub Copilot app's own database: names given in the app, forks, archiving. */
+function copilotApp(root: string, rows: Array<[string, string, string, string | null, string | null]>) {
+  const db = new DatabaseSync(path.join(root, 'data.db'))
+  db.exec('CREATE TABLE workspaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, session_id TEXT, name_source TEXT, creator_session_id TEXT, archived_at TEXT)')
+  const ins = db.prepare('INSERT INTO workspaces VALUES (?, ?, ?, ?, ?, ?)')
+  rows.forEach(([sid, name, src, parent, archived], i) => ins.run(`w${i}`, name, sid, src, parent, archived))
+  db.close()
 }
 
 describe('Import from GitHub Copilot', () => {
@@ -55,7 +67,7 @@ describe('Import from GitHub Copilot', () => {
     fs.chmodSync(path.join(root, 'session-state', 's1', 'events.jsonl'), 0o644)
     expect(c.map((s) => s.id)).toEqual(['new1', 's1', 's2'])
     expect(c[2]).toMatchObject({ title: 'hello two', turns: 2 })
-    expect(c[0]).toMatchObject({ title: "Fresh 'chat'", cwd: '/w/new', turns: 0 })
+    expect(c[0]).toMatchObject({ title: "Fresh 'chat'", cwd: '/w/new', turns: 0, turnsAtLeast: false })
     expect(c[1]).toMatchObject({ title: 'Named chat', cwd: '/w/one', local: null, group: '/w/one', turns: 0 })
   })
 
@@ -81,9 +93,71 @@ describe('Import from GitHub Copilot', () => {
     expect(msgs[0].content).toContain('Earlier: listed files.')
     expect(msgs.slice(2)).toEqual([{ role: 'user', content: 'second ask' }, { role: 'assistant', content: 'Done.' }])
     expect(store.loadMessages(r.ids[1])).toHaveLength(4)
-    expect(store.getSession((await importExternal(store, 'copilot', root, ['s1'], 'm1', '/here')).ids[0])!.cwd).toBe('/here')
-    // importing again just adds another copy: never a conflict
-    expect((await importExternal(store, 'copilot', root, ['s2'], 'm1')).added).toBe(1)
+    const other = new Store(path.join(tmp, 'other'))
+    expect(other.getSession((await importExternal(other, 'copilot', root, ['s1'], 'm1', '/here')).ids[0])!.cwd).toBe('/here')
+    // importing again skips by default instead of adding a second copy
+    expect(await importExternal(store, 'copilot', root, ['s2'], 'm1')).toMatchObject({ added: 0, skipped: 1 })
+  })
+
+  it('takes the name from the Copilot app, the date from the event log and nests forks', async () => {
+    const root = copilotFixture()
+    // renamed in the app (user) beats workspace.yaml; an automatic app name only fills in when nothing else has one
+    copilotApp(root, [['s1', 'Renamed in app', 'user', null, null], ['s2', 'App auto name', 'auto', 's1', '2026-01-09T00:00:00Z']])
+    // the log kept growing after the store index and workspace.yaml stopped (s1's index says 0 turns, so no "+")
+    const late = new Date('2026-02-01T00:00:00Z')
+    fs.utimesSync(path.join(root, 'session-state', 's1', 'events.jsonl'), late, late)
+    const c = await scanCopilot(root)
+    const s1 = c.find((x) => x.id === 's1')!, s2 = c.find((x) => x.id === 's2')!
+    expect(s1).toMatchObject({ title: 'Renamed in app', updated_at: late.getTime(), parent_id: null })
+    expect(s2).toMatchObject({ title: 'App auto name', parent_id: 's1', archived: true })
+    const r = await importExternal(store, 'copilot', root, ['s1', 's2'], 'm1')
+    expect(store.getSession(r.ids[0])).toMatchObject({ title: 'Renamed in app', updated_at: late.getTime(), origin: 'copilot:s1' })
+    expect(store.getSession(r.ids[1])!.parent_id).toBe(r.ids[0])
+  })
+
+  it('marks a lagging index turn count as a lower bound', async () => {
+    const root = copilotFixture()
+    const d = path.join(root, 'session-state', 's2')
+    fs.mkdirSync(d, { recursive: true })
+    jl(path.join(d, 'events.jsonl'), [{ type: 'user.message', data: { content: 'hello two' } }, { type: 'assistant.message', data: { content: 'hi' } }])
+    const c = await scanCopilot(root)
+    expect(c.find((x) => x.id === 's2')).toMatchObject({ turns: 2, turnsAtLeast: true })
+  })
+
+  it('works without the Copilot app database or with a different schema', async () => {
+    const root = copilotFixture()
+    const db = new DatabaseSync(path.join(root, 'data.db'))
+    db.exec('CREATE TABLE workspaces (id TEXT, label TEXT)')
+    db.close()
+    expect((await scanCopilot(root)).find((x) => x.id === 's1')!.title).toBe('Named chat')
+  })
+
+  it('flags chats imported before and lets a re-import skip, overwrite in place or fork', async () => {
+    const root = copilotFixture()
+    const first = await importExternal(store, 'copilot', root, ['s1'], 'm1', '/mine')
+    const id = first.ids[0]
+    store.updateSession(id, { title: 'My local title' })
+    const c = await scanCopilot(root, undefined, store)
+    expect(c.find((x) => x.id === 's1')!.local).toMatchObject({ id, title: 'My local title' })
+    expect(c.find((x) => x.id === 's2')!.local).toBeNull()
+    expect(await importExternal(store, 'copilot', root, ['s1'], 'm1')).toMatchObject({ skipped: 1, added: 0 })
+    const ov = await importExternal(store, 'copilot', root, ['s1'], 'm1', '/elsewhere', undefined, { s1: 'overwrite' })
+    expect(ov).toMatchObject({ overwritten: 1, ids: [id] })
+    expect(store.getSession(id)).toMatchObject({ title: 'Named chat', cwd: '/mine', origin: 'copilot:s1' })
+    const fk = await importExternal(store, 'copilot', root, ['s1'], 'm1', undefined, undefined, { s1: 'fork' })
+    expect(fk.forked).toBe(1)
+    expect(store.getSession(fk.ids[0])).toMatchObject({ parent_id: id, cwd: '/mine', title: 'Named chat · imported' })
+  })
+
+  it('recognizes a chat imported before origins were recorded by its start time', async () => {
+    const root = copilotFixture()
+    const created = Date.parse('2026-01-01T00:00:00Z')
+    store.createSession({ id: 'old', title: 'Old import', cwd: '/w', model: 'm', created_at: created, updated_at: created, parent_id: null, fork_turn: null })
+    // two sessions start at the same moment in the fixture, so neither is guessed; give s1 its own start time
+    fs.appendFileSync(path.join(root, 'session-state', 's1', 'workspace.yaml'), 'created_at: 2026-01-01T00:00:01Z\n')
+    store.createSession({ id: 'old1', title: 'Old s1', cwd: '/w', model: 'm', created_at: created + 1000, updated_at: created, parent_id: null, fork_turn: null })
+    const c = await scanCopilot(root, undefined, store)
+    expect(c.find((x) => x.id === 's1')!.local).toMatchObject({ id: 'old1' })
   })
 
   it('reports progress while reading and importing, ending at done = total', async () => {
@@ -130,6 +204,7 @@ describe('Import from Claude Code', () => {
     const c2 = await scanClaude(path.join(tmp, 'claude'))
     expect(c2[0]).toMatchObject({ id: big, title: 'big first ask', cwd: '/w/proj', turns: 0, updated_at: Date.parse('2026-03-02T00:00:00Z') })
     const rb = await importExternal(store, 'claude', path.join(tmp, 'claude'), [big], 'm2')
+    expect((await scanClaude(path.join(tmp, 'claude'), undefined, store)).find((x) => x.id === big)!.local).toMatchObject({ id: rb.ids[0] })
     expect(store.loadMessages(rb.ids[0]).filter((m) => m.role === 'user')).toHaveLength(2)
     fs.rmSync(big)
     const r = await importExternal(store, 'claude', path.join(tmp, 'claude'), [f, '/etc/passwd'], 'm2')
@@ -140,7 +215,10 @@ describe('Import from Claude Code', () => {
     expect(items.map((i) => i.t)).toEqual(['user', 'assistant', 'assistant', 'tool', 'assistant'])
     expect(items[3]).toMatchObject({ name: 'Bash', output: 'built', ok: true })
     expect(store.loadMessages(s.id)).toEqual([{ role: 'user', content: 'build it & ship' }, { role: 'assistant', content: 'Running.\n\nBuilt.\n\n(Tools used: Bash)' }])
-    expect(store.getSession((await importExternal(store, 'claude', path.join(tmp, 'claude'), [f], 'm2', '/here')).ids[0])!.cwd).toBe('/here')
+    // already imported: a fork goes under the earlier copy, in its folder, whatever `dest` says
+    const fk = await importExternal(store, 'claude', path.join(tmp, 'claude'), [f], 'm2', '/here', undefined, { [f]: 'fork' })
+    expect(fk.forked).toBe(1)
+    expect(store.getSession(fk.ids[0])).toMatchObject({ parent_id: s.id, cwd: '/w/proj' })
   })
 })
 

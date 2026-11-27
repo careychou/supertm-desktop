@@ -8,7 +8,7 @@ import type { SessionRow, Store } from './store'
 import type { Message } from '../engine/types'
 import { COMPACT_TAG } from '../shared/fork'
 import { COMPACT_ACK } from '../engine/compact'
-import type { ExternalSource, SyncCandidate, SyncImportResult } from '../shared/sync'
+import type { ExternalSource, SyncCandidate, SyncChoice, SyncImportResult } from '../shared/sync'
 
 /** Imported tool output is clipped so one huge log can't bloat the chat. */
 const MAX_OUT = 20_000
@@ -124,14 +124,13 @@ async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>): Prom
   await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) await fn(items[i++]) }))
 }
 
-/** Opens the live store read-only (one quick query, no copy). If that fails (locked, or no -shm on a read-only share), reads a temp copy. */
-function withCopilotDb<T>(root: string, fn: (db: DatabaseSync | null) => T): T {
-  const src = path.join(root, 'session-store.db')
+/** Opens a live SQLite file read-only (one quick query, no copy). If that fails (locked, or no -shm on a read-only share), reads a temp copy. */
+function withSqlite<T>(src: string, table: string, fn: (db: DatabaseSync | null) => T): T {
   if (!fs.existsSync(src)) return fn(null)
   const run = (file: string, opts: { readOnly?: boolean }) => {
     const db = new DatabaseSync(file, opts)
     try {
-      const ok = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sessions'").get()
+      const ok = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)
       return { v: fn(ok ? db : null) }
     } finally { db.close() }
   }
@@ -140,20 +139,69 @@ function withCopilotDb<T>(root: string, fn: (db: DatabaseSync | null) => T): T {
   if (opened) return opened.v
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-import-'))
   try {
-    for (const ext of ['', '-wal']) if (fs.existsSync(src + ext)) fs.copyFileSync(src + ext, path.join(tmp, 'session-store.db' + ext))
-    return run(path.join(tmp, 'session-store.db'), {}).v
-  } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
+    const base = path.basename(src)
+    for (const ext of ['', '-wal']) if (fs.existsSync(src + ext)) fs.copyFileSync(src + ext, path.join(tmp, base + ext))
+    return run(path.join(tmp, base), {}).v
+  } catch { return fn(null) } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
 }
+const withCopilotDb = <T>(root: string, fn: (db: DatabaseSync | null) => T): T => withSqlite(path.join(root, 'session-store.db'), 'sessions', fn)
+
+/** What the GitHub Copilot app knows about a session that the CLI files don't: the name shown in the app, who made it, archiving. */
+export interface CopilotAppMeta { name: string; named: boolean; parent: string | null; archived: boolean }
+
+/**
+ * Reads the GitHub Copilot app's own database (<root>/data.db), which is the only place a chat renamed in the app keeps
+ * its name. It exists only where the app is installed (not in a CLI-only or synced copy), and its schema is the app's
+ * own, so every column is checked first and anything missing just leaves the map empty.
+ */
+export function readCopilotApp(root: string): Map<string, CopilotAppMeta> {
+  const out = new Map<string, CopilotAppMeta>()
+  withSqlite(path.join(root, 'data.db'), 'workspaces', (db) => {
+    if (!db) return
+    const cols = new Set((db.prepare('PRAGMA table_info(workspaces)').all() as any[]).map((c) => c.name as string))
+    if (!cols.has('session_id') || !cols.has('name')) return
+    const pick = (c: string, alt = 'NULL') => (cols.has(c) ? c : alt)
+    const rows = db.prepare(`SELECT session_id, name, ${pick('name_source', "'auto'")} AS src, ${pick('creator_session_id')} AS parent, ${pick('archived_at')} AS archived
+      FROM workspaces WHERE session_id IS NOT NULL`).all() as Array<{ session_id: string; name: string | null; src: string | null; parent: string | null; archived: string | null }>
+    for (const r of rows) out.set(r.session_id, { name: (r.name ?? '').trim(), named: r.src === 'user' || r.src === 'agent', parent: r.parent || null, archived: !!r.archived })
+  })
+  return out
+}
+
+/** A renamed chat's name, then the CLI's own title, then the app's automatic name, then the store summary / first prompt. */
+function copilotTitle(app: CopilotAppMeta | undefined, w: Record<string, string>, summary: string | null | undefined, first: string): string {
+  return (app?.named && app.name) || w.name || app?.name || summary || w.summary || first || 'Copilot session'
+}
+
+/** The CLI stops updating workspace.yaml and the store index while the event log keeps growing: the newest of the three wins. */
+const latest = (...ts: number[]) => Math.round(Math.max(0, ...ts.filter((t) => Number.isFinite(t))))
+/** The index counts as behind when the log changed more than a minute after the index last did. */
+const STALE_MS = 60_000
+
+/** Tells each candidate which local chat an earlier import made from it, so a re-import can skip, overwrite or fork. */
+function markImported(store: Store | undefined, kind: ExternalSource, list: SyncCandidate[]): SyncCandidate[] {
+  if (!store) return list
+  for (const c of list) {
+    const l = store.findImported(originOf(kind, c.id), c.created_at)
+    if (l) c.local = { id: l.id, title: l.title, updated_at: l.updated_at }
+  }
+  return list
+}
+/** The stable key an imported chat keeps for its source: the tool's session id (for Claude, the log's file name). */
+export const originOf = (kind: ExternalSource, id: string) => `${kind}:${kind === 'claude' ? path.basename(id).replace(/\.jsonl$/, '') : id}`
 
 /** Reports done / total as sessions are read or imported, for a progress bar. */
 export type Progress = (done: number, total: number) => void
 
 /**
- * Lists sessions from the store's index plus each small workspace.yaml (for renamed chats), so it stays quick when
- * ~/.copilot is on a network drive (OneDrive): event logs are never read here. `turns` is 0 when not counted (event
- * log only); the full chat, and any empty one, is read at import for the picked chats only.
+ * Lists sessions from the store's index, each small workspace.yaml (for renamed chats), the Copilot app's database (for
+ * chats renamed in the app, forks and archiving) and one stat of each event log (for the real last-updated time), so it
+ * stays quick when ~/.copilot is on a network drive (OneDrive): event logs are never read here. `turns` comes from the
+ * store index; when the log is newer than the index it is a lower bound (`turnsAtLeast`), and 0 when not counted at all.
+ * The full chat, and the real turn count, is read at import for the picked chats only. With `store`, chats imported
+ * before are marked with their local copy.
  */
-export async function scanCopilot(root: string, onProgress?: Progress): Promise<SyncCandidate[]> {
+export async function scanCopilot(root: string, onProgress?: Progress, store?: Store): Promise<SyncCandidate[]> {
   const stateDir = path.join(root, 'session-state')
   const rows = withCopilotDb(root, (db) => {
     if (!db) return []
@@ -165,6 +213,7 @@ export async function scanCopilot(root: string, onProgress?: Progress): Promise<
       : 'SELECT id, cwd, summary, created_at, updated_at, 0 AS n, NULL AS first FROM sessions'
     return db.prepare(sql).all() as Array<{ id: string; cwd: string | null; summary: string | null; created_at: string; updated_at: string; n: number; first: string | null }>
   })
+  const app = readCopilotApp(root)
   const dirs = fs.existsSync(stateDir) ? await fs.promises.readdir(stateDir) : []
   const inDb = new Map(rows.map((r) => [r.id, r]))
   const ids = [...new Set([...rows.map((r) => r.id), ...dirs])]
@@ -174,17 +223,26 @@ export async function scanCopilot(root: string, onProgress?: Progress): Promise<
   await pool(ids, 16, async (id) => {
     const r = inDb.get(id)
     const dir = path.join(stateDir, id)
-    const events = await fs.promises.access(path.join(dir, 'events.jsonl')).then(() => true, () => false)
-    if (r?.n || events) {
+    const logAt = await fs.promises.stat(path.join(dir, 'events.jsonl')).then((st) => st.mtimeMs, () => 0)
+    if (r?.n || logAt) {
       const w = await yamlAsync(path.join(dir, 'workspace.yaml'))
+      const a = app.get(id)
       const cwd = w.cwd || r?.cwd || ''
       const firstLine = (r?.first ?? '').trim().split('\n')[0].slice(0, 80)
-      out.push({ id, title: w.name || r?.summary || w.summary || firstLine || 'Copilot session', cwd, model: '', updated_at: ms(w.updated_at, ms(r?.updated_at, ms(w.created_at))), parent_id: null, turns: r?.n ?? 0, local: null, group: cwd || '(no folder)' })
+      const indexAt = latest(ms(w.updated_at), ms(r?.updated_at))
+      out.push({
+        id, title: copilotTitle(a, w, r?.summary, firstLine), cwd, model: '', updated_at: latest(logAt, indexAt, ms(w.created_at)),
+        created_at: ms(w.created_at, ms(r?.created_at)) || undefined, parent_id: a?.parent ?? null, turns: r?.n ?? 0,
+        turnsAtLeast: !!logAt && !!r?.n && logAt > indexAt + STALE_MS, archived: a?.archived || undefined, local: null, group: cwd || '(no folder)'
+      })
     }
     onProgress?.(++done, ids.length)
   })
   onProgress?.(ids.length, ids.length)
-  return out.sort((a, b) => b.updated_at - a.updated_at)
+  // a fork / sub-session nests under its parent only when the parent is listed too
+  const listed = new Set(out.map((c) => c.id))
+  for (const c of out) if (c.parent_id && !listed.has(c.parent_id)) c.parent_id = null
+  return markImported(store, 'copilot', out.sort((a, b) => b.updated_at - a.updated_at))
 }
 
 /** Copilot event log → chat. Sub-agent events and injected notifications are left out; the main thread is kept. */
@@ -265,7 +323,7 @@ function peekLines(file: string): { lines: any[]; whole: boolean } {
  * Lists sessions by reading only the start and end of each log, so it stays quick on a network drive.
  * `turns` is counted for small logs and 0 (not counted) for large ones; import reads the picked chats in full.
  */
-export async function scanClaude(p: string, onProgress?: Progress): Promise<SyncCandidate[]> {
+export async function scanClaude(p: string, onProgress?: Progress, store?: Store): Promise<SyncCandidate[]> {
   const out: SyncCandidate[] = []
   const files = claudeFiles(p)
   let done = 0
@@ -285,11 +343,11 @@ export async function scanClaude(p: string, onProgress?: Progress): Promise<Sync
     const proj = path.basename(path.dirname(file))
     out.push({
       id: file, title: title || summary || first || 'Claude session', cwd: cwd || proj, model: '', updated_at: end || fs.statSync(file).mtimeMs,
-      parent_id: null, turns: peek.whole ? turns : 0, local: null, group: cwd || proj
+      created_at: start || undefined, parent_id: null, turns: peek.whole ? turns : 0, local: null, group: cwd || proj
     })
   }
   onProgress?.(files.length, files.length)
-  return out.sort((a, b) => b.updated_at - a.updated_at)
+  return markImported(store, 'claude', out.sort((a, b) => b.updated_at - a.updated_at))
 }
 
 export async function convertClaude(file: string, model: string): Promise<Converted & { cwd: string; title: string; start: number; end: number }> {
@@ -321,23 +379,42 @@ const firstPrompt = (c: Converted) => { const u = c.items.find((i) => i.t === 'u
 
 // ── Import ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-function save(store: Store, r: SyncImportResult, src: { title: string; cwd: string; created: number; updated: number; model: string }, conv: Converted) {
-  if (!conv.turns) { r.skipped++; return }
-  const row: SessionRow = {
-    id: randomUUID(), title: src.title.replace(/\\n|\s+/g, ' ').trim().slice(0, 120), cwd: src.cwd || os.homedir(), model: src.model,
-    created_at: src.created || src.updated, updated_at: src.updated || Date.now(), parent_id: null, fork_turn: null,
-    compact_offset: conv.compactOffset || null
+interface Source { origin: string; title: string; cwd: string; created: number; updated: number; model: string }
+
+/**
+ * Saves one converted chat. A chat imported before (same origin) is skipped unless `choice` says otherwise: `overwrite`
+ * replaces that local chat's history in place (it keeps its id, folder, place in the tree and order), `fork` adds the
+ * import with a new id under it. A chat never imported is added with a new id. Returns the saved id, if any.
+ */
+function save(store: Store, r: SyncImportResult, src: Source, conv: Converted, choice: SyncChoice | undefined): string | null {
+  if (!conv.turns) { r.skipped++; return null }
+  const local = store.findImported(src.origin, src.created)
+  const c: SyncChoice = local ? choice ?? 'skip' : 'overwrite'
+  if (c === 'skip') { r.skipped++; return null }
+  const title = src.title.replace(/\\n|\s+/g, ' ').trim().slice(0, 120)
+  const base: SessionRow = {
+    id: randomUUID(), title, cwd: src.cwd || os.homedir(), model: src.model, created_at: src.created || src.updated, updated_at: src.updated || Date.now(),
+    parent_id: null, fork_turn: null, compact_offset: conv.compactOffset || null, origin: src.origin
   }
+  const row: SessionRow = !local ? base
+    : c === 'fork' ? { ...base, cwd: local.cwd, parent_id: local.id, title: `${title} · imported` }
+    : { ...base, id: local.id, cwd: local.cwd, model: local.model || src.model, parent_id: local.parent_id, fork_turn: null, sort_order: local.sort_order ?? null, reasoning: local.reasoning, mode: local.mode, memories: local.memories }
   store.putSession(row)
   store.saveMessages(row.id, conv.messages)
   store.saveUiItems(row.id, conv.items)
   r.ids.push(row.id)
-  r.added++
+  if (!local) r.added++
+  else if (c === 'fork') r.forked++
+  else r.overwritten++
+  return row.id
 }
 
-/** Imports chosen chats from another tool. Their IDs mean nothing here, so every chat gets a new UUID: never a conflict. */
-/** Each picked chat is added as new, filed under `dest` (a working folder on this Mac) instead of the other tool's folder. */
-export async function importExternal(store: Store, kind: ExternalSource, root: string, ids: string[], model: string, dest?: string, onProgress?: Progress): Promise<SyncImportResult> {
+/**
+ * Imports chosen chats from another tool. Their ids mean nothing here, so a new chat gets a new UUID, and remembers its
+ * source (`origin`) so the next import knows it is already here: `choices` then decides skip (default), overwrite or fork.
+ * New chats are filed under `dest` (a working folder on this Mac) instead of the other tool's folder.
+ */
+export async function importExternal(store: Store, kind: ExternalSource, root: string, ids: string[], model: string, dest?: string, onProgress?: Progress, choices: Record<string, SyncChoice> = {}): Promise<SyncImportResult> {
   const r: SyncImportResult = { added: 0, overwritten: 0, forked: 0, skipped: 0, ids: [] }
   if (kind === 'claude') {
     const known = new Set(claudeFiles(root))
@@ -346,7 +423,7 @@ export async function importExternal(store: Store, kind: ExternalSource, root: s
       onProgress?.(done++, ids.length)
       if (!known.has(file)) { r.skipped++; continue }
       const conv = await convertClaude(file, model)
-      save(store, r, { title: conv.title || firstPrompt(conv) || 'Claude session', cwd: dest || conv.cwd, created: conv.start, updated: conv.end, model }, conv)
+      save(store, r, { origin: originOf('claude', file), title: conv.title || firstPrompt(conv) || 'Claude session', cwd: dest || conv.cwd, created: conv.start, updated: conv.end, model }, conv, choices[file])
     }
     return r
   }
@@ -363,14 +440,30 @@ export async function importExternal(store: Store, kind: ExternalSource, root: s
     }
     return m
   })
+  const app = readCopilotApp(root)
+  const added = new Map<string, string>()
   let done = 0
   for (const id of ids) {
     onProgress?.(done++, ids.length)
     const s = meta.get(id)
     const w = yaml(path.join(stateDir, id, 'workspace.yaml'))
     const events = path.join(stateDir, id, 'events.jsonl')
-    const conv = fs.existsSync(events) ? await convertCopilotEvents(events, model) : convertCopilotTurns(s?.turns ?? [], model)
-    save(store, r, { title: w.name || s?.summary || firstPrompt(conv) || 'Copilot session', cwd: dest || w.cwd || s?.cwd || '', created: ms(w.created_at, s?.created ?? 0), updated: ms(w.updated_at, s?.updated ?? 0), model }, conv)
+    const logAt = fs.existsSync(events) ? fs.statSync(events).mtimeMs : 0
+    const conv = logAt ? await convertCopilotEvents(events, model) : convertCopilotTurns(s?.turns ?? [], model)
+    const before = r.added
+    const saved = save(store, r, {
+      origin: originOf('copilot', id), title: copilotTitle(app.get(id), w, s?.summary, firstPrompt(conv)), cwd: dest || w.cwd || s?.cwd || '',
+      created: ms(w.created_at, s?.created ?? 0), updated: latest(logAt, ms(w.updated_at), s?.updated ?? 0), model
+    }, conv, choices[id])
+    if (saved && r.added > before) added.set(id, saved)
+  }
+  // a newly added fork / sub-session nests under its parent when the parent came along or was imported before
+  for (const [id, localId] of added) {
+    const parent = app.get(id)?.parent
+    if (!parent) continue
+    const pid = added.get(parent) ?? store.findImported(originOf('copilot', parent))?.id
+    const row = store.getSession(localId)
+    if (pid && row && pid !== localId) store.putSession({ ...row, parent_id: pid })
   }
   return r
 }

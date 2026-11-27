@@ -8,7 +8,7 @@ import { splitHistoryTurns } from '../engine/compact'
 import { entriesFromItems, entryOf, ftsQuery, type RecallHit, type RecallScope } from '../engine/recall'
 
 export interface UsageRec { ts: number; session_id: string; agent_id: string; model: string; prompt: number; cached: number; cache_write: number; completion: number }
-export interface SessionRow { id: string; title: string; cwd: string; model: string; created_at: number; updated_at: number; parent_id: string | null; fork_turn: number | null; reasoning?: string | null; mode?: string | null; memories?: string | null; sort_order?: number | null; compact_offset?: number | null; turn_map?: string | null }
+export interface SessionRow { id: string; title: string; cwd: string; model: string; created_at: number; updated_at: number; parent_id: string | null; fork_turn: number | null; reasoning?: string | null; mode?: string | null; memories?: string | null; sort_order?: number | null; compact_offset?: number | null; turn_map?: string | null; origin?: string | null }
 export interface FolderRow { path: string; added_at: number; memory?: string | null }
 /** A bookmark folder (id) or a pinned session (session_id), nested via parent_id (null = top of Bookmarks). */
 export interface BookmarkRow { id: string; kind: 'folder' | 'pin'; name: string | null; session_id: string | null; parent_id: string | null; sort_order: number; collapsed: number }
@@ -35,6 +35,9 @@ export class Store {
     if (!cols.includes('turn_map')) this.db.exec('ALTER TABLE sessions ADD COLUMN turn_map TEXT')
     if (!cols.includes('compact_offset')) this.db.exec('ALTER TABLE sessions ADD COLUMN compact_offset INTEGER')
     if (!cols.includes('sort_order')) this.db.exec('ALTER TABLE sessions ADD COLUMN sort_order INTEGER')
+    // where an imported chat came from ("copilot:<session id>", "claude:<session id>"), so a re-import finds it
+    if (!cols.includes('origin')) this.db.exec('ALTER TABLE sessions ADD COLUMN origin TEXT')
+    this.db.exec('CREATE INDEX IF NOT EXISTS ix_sessions_origin ON sessions(origin)')
     this.db.exec('CREATE TABLE IF NOT EXISTS bookmarks (id TEXT PRIMARY KEY, kind TEXT, name TEXT, session_id TEXT, parent_id TEXT, sort_order INTEGER, collapsed INTEGER DEFAULT 0)')
     this.db.exec('CREATE TABLE IF NOT EXISTS usage (ts INTEGER, session_id TEXT, agent_id TEXT, model TEXT, prompt INTEGER, cached INTEGER, cache_write INTEGER, completion INTEGER); CREATE INDEX IF NOT EXISTS usage_ts ON usage(ts)')
     // recall index: one row per turn, kept when compaction removes the turn from the history
@@ -198,9 +201,19 @@ export class Store {
   touchSession(id: string, at = Date.now()) { this.db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(at, id) }
   /** Inserts or fully replaces a session row (Sync sessions import). Children and pins keep pointing at the same id. */
   putSession(r: SessionRow) {
-    this.db.prepare('INSERT OR REPLACE INTO sessions (id, title, cwd, model, created_at, updated_at, parent_id, fork_turn, reasoning, mode, memories, compact_offset, turn_map, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(r.id, r.title, r.cwd, r.model, r.created_at, r.updated_at, r.parent_id, r.fork_turn, r.reasoning ?? null, r.mode ?? null, r.memories ?? null, r.compact_offset ?? null, r.turn_map ?? null, r.sort_order ?? null)
+    this.db.prepare('INSERT OR REPLACE INTO sessions (id, title, cwd, model, created_at, updated_at, parent_id, fork_turn, reasoning, mode, memories, compact_offset, turn_map, sort_order, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(r.id, r.title, r.cwd, r.model, r.created_at, r.updated_at, r.parent_id, r.fork_turn, r.reasoning ?? null, r.mode ?? null, r.memories ?? null, r.compact_offset ?? null, r.turn_map ?? null, r.sort_order ?? null, r.origin ?? null)
     this.addFolder(r.cwd)
+  }
+  /**
+   * The chat an earlier import made from `origin`. Chats imported before origins were recorded are matched by their
+   * start time instead (an import keeps the source chat's start time), when exactly one such chat exists.
+   */
+  findImported(origin: string, createdAt?: number): SessionRow | undefined {
+    const hit = this.db.prepare('SELECT * FROM sessions WHERE origin = ? ORDER BY updated_at DESC LIMIT 1').get(origin) as unknown as SessionRow | undefined
+    if (hit || !createdAt) return hit
+    const old = this.db.prepare('SELECT * FROM sessions WHERE origin IS NULL AND parent_id IS NULL AND created_at = ? LIMIT 2').all(createdAt) as unknown as SessionRow[]
+    return old.length === 1 ? old[0] : undefined
   }
   /** Writes a consistent standalone copy of the whole database (works while it is open in WAL mode). */
   exportTo(file: string) {

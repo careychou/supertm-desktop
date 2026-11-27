@@ -3,10 +3,16 @@ export type SyncChoice = 'overwrite' | 'fork' | 'skip'
 export interface SyncManifest { app: string; exportedAt: number; host: string; sessions: number }
 export interface SyncCandidate {
   id: string; title: string; cwd: string; model: string; updated_at: number; parent_id: string | null; turns: number
-  /** The local chat with the same UUID, if any (always null for another tool's chats). */
-  local: { title: string; updated_at: number } | null
+  /** The local chat with the same UUID, or for another tool's chat the local chat an earlier import made from it. */
+  local: { id?: string; title: string; updated_at: number } | null
   /** Heading the import list groups by: the chat's folder (Claude Code project / Copilot cwd). */
   group?: string
+  /** When the chat started (matches chats imported before their origin was recorded). */
+  created_at?: number
+  /** `turns` is a lower bound: the source's index is behind its event log (the real count is read at import). */
+  turnsAtLeast?: boolean
+  /** Archived in the other tool. */
+  archived?: boolean
 }
 /** Where an import comes from: this app's own export, or another tool's local session history. */
 export type ImportSource = 'owned' | ExternalSource

@@ -1,5 +1,15 @@
 # Release notes
 
+## 1.4.9
+
+### Import from GitHub Copilot: right names, dates and turn counts, and no duplicate imports
+- **Names match the GitHub Copilot app.** A chat you renamed in the app now shows that name. It was stored only in the app's own database, which import now reads (read-only, and only when the app is installed)
+- **Last updated is right.** Copilot stops updating its index while the chat log keeps growing, so the newest of the log, `workspace.yaml` and the index is used
+- **Turn counts.** When Copilot's index is behind its log, the count shows as **N+**. Import still brings in every turn
+- **Forks nest** under their parent chat, and chats archived in the GitHub Copilot app are labeled
+- **Already imported?** Each imported chat now remembers where it came from. Re-importing flags it **Imported before**, showing the local title and how much newer the source is. Choose **Skip** (the default), **Overwrite local** (the same chat, with new history) or **Import as fork**. This also applies to Claude Code. Chats imported earlier are recognized by their start time
+- Filter the import list by session ID as well as title and folder
+
 ## 1.4.8
 
 ### Bookmarked chats leave the folder list

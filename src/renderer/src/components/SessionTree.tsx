@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
 
-export interface TreeRow { id: string; title: string; cwd: string; updated_at: number; turns: number; parent_id: string | null; group?: string }
+export interface TreeRow { id: string; title: string; cwd: string; updated_at: number; turns: number; parent_id: string | null; group?: string; turnsAtLeast?: boolean }
 
 interface Folder<T> { key: string; name: string; full: string; folders: Folder<T>[]; sessions: Array<SessionNode<T>>; ids: string[]; latest: number }
 interface SessionNode<T> { row: T; forks: Array<SessionNode<T>> }
@@ -55,7 +55,7 @@ export function SessionTree<T extends TreeRow>({ rows, picked, setPicked, extra,
   const [open, setOpen] = useState<Set<string> | null>(null)
   const shown = useMemo(() => {
     const k = q.trim().toLowerCase()
-    return k ? rows.filter((r) => `${r.title} ${r.group ?? r.cwd}`.toLowerCase().includes(k)) : rows
+    return k ? rows.filter((r) => `${r.title} ${r.group ?? r.cwd} ${r.id}`.toLowerCase().includes(k)) : rows
   }, [rows, q])
   const tree = useMemo(() => buildTree(shown), [shown])
   // A common prefix with no chats of its own ("~/projects") is shown as one expanded top folder.
@@ -98,7 +98,7 @@ export function SessionTree<T extends TreeRow>({ rows, picked, setPicked, extra,
           <input type="checkbox" checked={picked.has(r.id)} onChange={(e) => setMany([r.id], e.target.checked)} />
           <div className="tree-main">
             <div className="sync-title">{r.parent_id ? '⑂ ' : ''}{r.title}</div>
-            {r.turns > 0 && <div className="muted small">{plural(r.turns, 'turn')}</div>}
+            {r.turns > 0 && <div className="muted small" title={r.turnsAtLeast ? 'The source index is behind its log: the full chat is read at import' : undefined}>{r.turnsAtLeast ? `${r.turns}+ turns` : plural(r.turns, 'turn')}</div>}
             {extra && <div className="small tree-extra">{extra(r)}</div>}
           </div>
           <span className="tree-when small">{when(r.updated_at)}</span>
@@ -113,7 +113,7 @@ export function SessionTree<T extends TreeRow>({ rows, picked, setPicked, extra,
   return (
     <>
       <div className="row-actions">
-        <input className="sync-filter" placeholder={`Filter ${rows.length} sessions by title or folder…`} value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="sync-filter" placeholder={`Filter ${rows.length} sessions by title, folder or ID…`} value={q} onChange={(e) => setQ(e.target.value)} />
         <button className="link" onClick={() => expandAll(true)}>Expand all</button>
         <button className="link" onClick={() => expandAll(false)}>Collapse all</button>
       </div>

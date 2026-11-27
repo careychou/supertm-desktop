@@ -15,8 +15,8 @@ const clean = (e: any) => String(e?.message ?? e).replace(/^Error invoking remot
 
 const SOURCES: Array<{ kind: ImportSource; label: string; hint: string }> = [
   { kind: 'owned', label: BRAND.title, hint: `A folder you exported to from ${BRAND.title} on another Mac. Same-ID chats can be overwritten, forked or skipped.` },
-  { kind: 'copilot', label: 'GitHub Copilot', hint: 'A Copilot session-state folder (holds session-store.db and session-state/), usually ~/.copilot. Every chat is added as new.' },
-  { kind: 'claude', label: 'Claude Code', hint: 'Claude Code projects (~/.claude/projects, or one project folder in it). Every chat is added as new.' }
+  { kind: 'copilot', label: 'GitHub Copilot', hint: 'A Copilot session-state folder (holds session-store.db and session-state/), usually ~/.copilot. Chats imported before are flagged.' },
+  { kind: 'claude', label: 'Claude Code', hint: 'Claude Code projects (~/.claude/projects, or one project folder in it). Chats imported before are flagged.' }
 ]
 
 type Row = TreeRow
@@ -102,6 +102,7 @@ export function SyncTab() {
         const r = await window.desk.importScan(kind, d)
         setScan({ kind, root: r.root, manifest: null, sessions: r.sessions })
         setPicked(new Set())
+        if (r.sessions.some((s) => s.local)) setMsg('')
         if (!r.sessions.length) setMsg(`No ${label} sessions with turns in that folder.`)
       }
     })
@@ -116,14 +117,17 @@ export function SyncTab() {
     if (!scan) return
     if (needsDest && !dest) return setMsg('Choose the working folder to import into.')
     let r
+    const picks = scan.sessions.filter((s) => picked.has(s.id)).map((s) => ({ id: s.id, choice: s.local ? choice[s.id] ?? 'skip' : undefined }))
+    const over = scan.sessions.filter((s) => s.local && picks.some((p) => p.id === s.id && p.choice === 'overwrite'))
+    if (over.length && !window.confirm(`Overwrite ${over.length} chat${over.length > 1 ? 's' : ''} on this Mac?\n\n${over.map((s) => `• ${s.local!.title}: import is ${ageDiff(s.updated_at, s.local!.updated_at)}`).join('\n')}\n\nThe local cop${over.length > 1 ? 'ies are' : 'y is'} replaced and cannot be restored.`)) return
     if (scan.kind === 'owned') {
-      const picks = scan.sessions.filter((s) => picked.has(s.id)).map((s) => ({ id: s.id, choice: s.local ? choice[s.id] ?? 'skip' : undefined }))
-      const over = scan.sessions.filter((s) => s.local && picks.some((p) => p.id === s.id && p.choice === 'overwrite'))
-      if (over.length && !window.confirm(`Overwrite ${over.length} chat${over.length > 1 ? 's' : ''} on this Mac?\n\n${over.map((s) => `• ${s.local!.title}: import is ${ageDiff(s.updated_at, s.local!.updated_at)}`).join('\n')}\n\nThe local cop${over.length > 1 ? 'ies are' : 'y is'} replaced and cannot be restored.`)) return
       r = await window.desk.syncImport(scan.root, picks, dest || undefined)
       setScan({ ...scan, sessions: (await window.desk.syncScan(scan.root)).sessions })
     } else {
-      r = await window.desk.importExternal(scan.kind, scan.root, [...picked], dest)
+      const choices = Object.fromEntries(picks.filter((p) => p.choice).map((p) => [p.id, p.choice!]))
+      r = await window.desk.importExternal(scan.kind, scan.root, picks.map((p) => p.id), dest, choices)
+      // re-read so the chats just imported show as already here
+      setScan({ ...scan, sessions: (await window.desk.importScan(scan.kind, scan.root)).sessions })
     }
     const parts = [r.added && `${r.added} added`, r.overwritten && `${r.overwritten} overwritten`, r.forked && `${r.forked} imported as fork${r.forked === 1 ? '' : 's'}`, r.skipped && `${r.skipped} skipped`].filter(Boolean)
     const where = dest ? ` into ${base(dest)}` : ''
@@ -133,7 +137,8 @@ export function SyncTab() {
 
   const list = scan?.sessions ?? []
   const owned = scan?.kind === 'owned'
-  const conflicts = owned ? list.filter((s) => s.local && picked.has(s.id)) : []
+  const conflicts = list.filter((s) => s.local && picked.has(s.id))
+  const already = list.filter((s) => s.local).length
   // overwritten / forked chats stay in their local folder, so only new chats need a destination
   const needsDest = list.some((s) => picked.has(s.id) && !s.local)
   const srcFolders = [...new Set(list.filter((s) => picked.has(s.id) && !s.local).map((s) => s.group ?? s.cwd).filter((f) => f && f !== '/'))]
@@ -174,19 +179,20 @@ export function SyncTab() {
           <b>{srcLabel}</b>{' · '}
           {scan.manifest ? <>exported {when(scan.manifest.exportedAt)} from <b>{scan.manifest.host}</b> · </> : <span title={scan.root}>{scan.root} · </span>}
           {plural(list.length, 'session')}.{' '}
-          {owned ? 'Chats already on this Mac are unchecked; check one to choose what to do with it.' : 'Each chat you pick is added as a new chat (its old ID is not used, so nothing conflicts).'}
+          {owned ? 'Chats already on this Mac are unchecked; check one to choose what to do with it.' : `Each chat you pick is added as a new chat.${already ? ' Chats you imported before are flagged; pick one to skip, overwrite or fork it.' : ''}`}
         </div>
         <SessionTree
-          rows={list} picked={picked} setPicked={setPicked} extraLabel={owned && list.some((x) => x.local) ? `${list.filter((x) => x.local).length} already on this Mac` : undefined}
+          rows={list} picked={picked} setPicked={setPicked} extraLabel={already ? `${already} already on this Mac` : undefined}
           rowClass={(s) => (s.local ? 'conflict' : '')}
-          extra={owned ? (s) => !s.local ? null : <>
-            <div className="sync-warn">⚠ Same ID, local updated {when(s.local.updated_at)}: import is <b>{ageDiff(s.updated_at, s.local.updated_at)}</b></div>
-            {picked.has(s.id) && (
+          extra={(s) => !s.local && !s.archived ? null : <>
+            {s.archived && <div className="muted small">Archived in {srcLabel}</div>}
+            {s.local && <div className="sync-warn">⚠ {owned ? 'Same ID' : <>Imported before{s.local.title !== s.title ? <> as <b>{s.local.title}</b></> : ''}</>}, local updated {when(s.local.updated_at)}: {owned ? 'import' : 'source'} is <b>{ageDiff(s.updated_at, s.local.updated_at)}</b></div>}
+            {s.local && picked.has(s.id) && (
               <select value={choice[s.id] ?? 'skip'} onChange={(e) => setChoice({ ...choice, [s.id]: e.target.value as SyncChoice })}>
                 {CHOICES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
               </select>
             )}
-          </> : undefined}
+          </>}
         />
         {conflicts.length > 0 && <div className="muted small"><b>Overwrite local</b> replaces this Mac's copy. <b>Import as fork</b> keeps it and adds the import, with a new ID, under it. <b>Skip</b> leaves it alone.</div>}
         {!owned && <div className="muted small">Imported chats keep the full transcript (messages, tool calls and results). The model continues from a text-only history, and the other tool's compaction summaries carry over.</div>}
@@ -198,7 +204,7 @@ export function SyncTab() {
               <option value={PICK}>Choose another folder…</option>
             </select>
           </label>
-          <div className="muted small">Only the chats are imported. They go under this folder{srcFolders.length === 1 ? <> instead of <b title={srcFolders[0]}>{srcFolders[0]}</b></> : srcFolders.length > 1 ? ' instead of their original folders' : ''}, so no second folder with the same name is added.{owned && conflicts.length > 0 ? ' Overwritten or forked chats stay in their current folder.' : ''}</div>
+          <div className="muted small">Only the chats are imported. They go under this folder{srcFolders.length === 1 ? <> instead of <b title={srcFolders[0]}>{srcFolders[0]}</b></> : srcFolders.length > 1 ? ' instead of their original folders' : ''}, so no second folder with the same name is added.{conflicts.length > 0 ? ' Overwritten or forked chats stay in their current folder.' : ''}</div>
         </div>}
         {busy === 'Importing…' && <ProgressBar label={`Importing ${plural(picked.size, 'chat')}…`} prog={prog} hint="Keep this window open until it finishes." />}
         <div className="row-actions">

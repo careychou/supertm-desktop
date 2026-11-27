@@ -339,8 +339,8 @@ Pick where to import from:
 | Source | Folder to choose | Same chat already here? |
 |---|---|---|
 | **SuperTM Desktop** | A folder you exported to on another Mac | You see how much newer or older each side is, then choose **Overwrite**, **Import as fork** (added under the local chat with a new ID) or **Skip** |
-| **GitHub Copilot** | A Copilot `session-state` folder (has `session-store.db` and `session-state/`), usually `~/.copilot` | Not possible; every chat is added as new |
-| **Claude Code** | `~/.claude/projects`, or one project folder inside it | Not possible; every chat is added as new |
+| **GitHub Copilot** | A Copilot `session-state` folder (has `session-store.db` and `session-state/`), usually `~/.copilot` | A chat you imported before is flagged **Imported before**, with how much newer the source is. Choose **Skip** (default), **Overwrite local** (replaces its history in place) or **Import as fork** |
+| **Claude Code** | `~/.claude/projects`, or one project folder inside it | Same as GitHub Copilot |
 
 Then:
 

@@ -136,8 +136,8 @@ export interface DeskApi {
   importDefaults(): Promise<Record<ExternalSource, string | null>>
   /** Lists another tool's chats (candidate ids are Copilot session ids or Claude .jsonl paths). */
   importScan(kind: ExternalSource, dir: string): Promise<{ root: string; sessions: SyncCandidate[] }>
-  /** Imports them with new UUIDs, so they never conflict. */
-  importExternal(kind: ExternalSource, root: string, ids: string[], dest?: string): Promise<SyncImportResult>
+  /** Imports them with new UUIDs. A chat imported before is skipped unless `choices` (by candidate id) says overwrite or fork. */
+  importExternal(kind: ExternalSource, root: string, ids: string[], dest?: string, choices?: Record<string, SyncChoice>): Promise<SyncImportResult>
   /** Omit `cwd` for personal (~/.copilot) items only. */
   registryInfo(cwd?: string): Promise<RegistryInfo>
   mcpStatus(): Promise<McpServerStatus[]>
