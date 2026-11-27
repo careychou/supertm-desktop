@@ -95,7 +95,7 @@ Tool failures therefore never abort the loop. Only abort/cancel and model-reques
 |---|---|---|
 | `shell` | shell | `zsh -lc`, sync (timeout default 120 s, max 600 s, output tail 30,000 chars) or `mode: async` returning a `shellId` |
 | `read_shell`, `write_shell`, `stop_shell`, `list_shells` | write_shell: shell | Interact with async shells |
-| `read_file` | – | Optional 1-based line range; output capped at 50 KB; directories list entries |
+| `read_file` | – | Optional 1-based line range; output capped at 50 KB; directories list entries. An image (PNG/JPEG/GIF/WebP) is resized like an attachment and sent to the model as a picture in a `<tool_images>` user-role message after the tool results (not counted as a user turn); other binary files are refused |
 | `write_file` | write | Creates parent folders |
 | `edit_file` | write | Replaces exactly one occurrence; fails if `old_str` is missing or not unique (the error asks for more context) |
 | `glob` | – | `**`, `*`, `?`, `{a,b}`; up to 200 results; walk limit 20,000 files |

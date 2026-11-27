@@ -70,7 +70,10 @@ export interface RequestBudget {
   imageTurns: number
 }
 
-export const OMITTED_IMAGE = '[An earlier image was omitted here to save context. Ask the user to re-attach it if you need to see it again.]'
+export const OMITTED_IMAGE = '[An earlier image was omitted here to save context. If you need to see it again, read the file again (when a tool opened it) or ask the user to re-attach it.]'
+/** Starts the user-role message that carries images a tool opened (read_file on a PNG); not a user turn. */
+export const TOOL_IMAGE_TAG = '<tool_images>'
+const toolImages = (m: Message) => m.role === 'user' && textOf(m.content).startsWith(TOOL_IMAGE_TAG)
 
 const heavy = (p: ContentPart) => p.type === 'image_url' || p.type === 'file'
 /** An image becomes a note; a PDF falls back to its extracted text. */
@@ -89,9 +92,10 @@ export function fitRequest(messages: Message[], b: RequestBudget): Message[] {
     m.content = (m.content as ContentPart[]).map((p) => (heavy(p) ? light(p) : p)) as any
   }
   if (b.imageTurns > 0) {
-    const users = out.map((m, i) => (m.role === 'user' ? i : -1)).filter((i) => i >= 0)
-    const recent = new Set(users.slice(-b.imageTurns))
-    out.forEach((m, i) => { if (hasImage(m) && !recent.has(i)) omit(m) })
+    // Images a tool opened belong to the turn of the user message before them.
+    const users = out.map((m, i) => (m.role === 'user' && !toolImages(m) ? i : -1)).filter((i) => i >= 0)
+    const from = users.length > b.imageTurns ? users[users.length - b.imageTurns] : 0
+    out.forEach((m, i) => { if (hasImage(m) && i < from) omit(m) })
   }
   const size = () => JSON.stringify(out).length
   if (size() <= b.maxBytes) return out

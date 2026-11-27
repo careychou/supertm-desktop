@@ -1,8 +1,13 @@
 import type { Message } from '../engine/types'
-import { textOf } from '../engine/content'
+import { TOOL_IMAGE_TAG, textOf } from '../engine/content'
+export { TOOL_IMAGE_TAG }
 
 export const COMPACT_TAG = '<compacted_history>'
-export const isRealUser = (m: Message) => m.role === 'user' && !textOf(m.content).startsWith('<system_notification>') && !textOf(m.content).startsWith(COMPACT_TAG)
+export const isRealUser = (m: Message) => {
+  if (m.role !== 'user') return false
+  const t = textOf(m.content)
+  return !t.startsWith('<system_notification>') && !t.startsWith(COMPACT_TAG) && !t.startsWith(TOOL_IMAGE_TAG)
+}
 
 /** Main-agent history up to and including user turn `turn` (0-based) and its full response. */
 export function sliceMessagesAtTurn(messages: Message[], turn: number): Message[] {

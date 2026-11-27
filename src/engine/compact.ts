@@ -38,6 +38,32 @@ export const estimateTokens = (messages: Message[]) =>
     return n + m.content.reduce((k, p) => k + (p.type === 'text' ? p.text.length / 4 : p.type === 'file' ? p.file.text.length / 4 + p.file.pages * IMAGE_TOKENS : IMAGE_TOKENS), 8)
   }, 0))
 
+/** The provider refused the request because the prompt exceeds the model's context window. */
+export const isContextOverflow = (e: any) => /prompt is too long|too many (input )?tokens|context (length|window)|maximum context|input is too long|exceeds the (model's )?(context|maximum)/i.test(String(e?.message ?? e))
+
+/**
+ * Cuts tool results longer than `maxChars` down to their head plus a note (mostly-binary results to a note alone),
+ * largest first, until the estimate is under `target` tokens. Older turns go before the current one. Mutates
+ * `messages`; returns how many results were cut.
+ */
+export function shrinkToolResults(messages: Message[], target: number, maxChars = 4000): number {
+  const lastUser = messages.reduce((k, m, i) => (isRealUser(m) ? i : k), -1)
+  type Tool = Extract<Message, { role: 'tool' }>
+  const big = messages.flatMap((m, i) => (m.role === 'tool' && m.content.length > maxChars ? [{ m: m as Tool, i }] : []))
+  big.sort((a, b) => Number(a.i > lastUser) - Number(b.i > lastUser) || b.m.content.length - a.m.content.length)
+  let n = 0
+  for (const { m } of big) {
+    if (n && estimateTokens(messages) <= target) break
+    const t = m
+    const bad = (t.content.match(/\ufffd|[\u0000-\u0008\u000e-\u001f]/g) ?? []).length
+    t.content = bad > t.content.length / 20
+      ? `[A ${t.content.length.toLocaleString('en-US')}-char tool result that was mostly binary data was removed to fit the context window.]`
+      : `${t.content.slice(0, maxChars / 2)}\n…[${(t.content.length - maxChars / 2).toLocaleString('en-US')} more chars of this tool result were removed to fit the context window; run the tool again if you need them.]`
+    n++
+  }
+  return n
+}
+
 /** Existing summary carried by a previous compaction (the leading <compacted_history> message), if any. */
 export function priorSummary(history: Message[]): string {
   const m = history[0]
@@ -206,7 +232,9 @@ export type AutoCompactDecision =
 export function autoCompactDecision(i: AutoCompactInput): AutoCompactDecision {
   const cut = Math.max(0, i.turns.length - i.keepRecent)
   const gain = i.turns.slice(0, cut).reduce((n, t) => n + estimateTokens(t.messages), 0)
-  if (i.mode !== 'auto') return { compact: false, reason: 'off', gain }
+  if (i.mode === 'off') return { compact: false, reason: 'off', gain }
+  // Suggest still compacts past the hard limit: a chat that keeps growing would otherwise outgrow the model's context.
+  if (i.mode === 'suggest' && !(i.hardLimit > 0 && i.tokens >= i.hardLimit)) return { compact: false, reason: 'off', gain }
   if (i.tokens <= i.threshold) return { compact: false, reason: 'under-threshold', gain }
   if (cut === 0) return { compact: false, reason: 'too-few-turns', gain }
   if (gain < i.minGain) return { compact: false, reason: 'small-gain', gain }

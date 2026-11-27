@@ -121,7 +121,7 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
               <span className="muted small">A fast, cheaper model is usually enough to summarize. If it fails, the chat's model is used instead.</span>
             </label>
             <div className="row3">
-              <label><Lbl text="Long chats" tip="What to do when a chat grows past the threshold: nothing, show a suggestion to compact, or compact automatically using the rules below." ex="Suggest: at 85k tokens a banner offers Compact. Auto: it compacts by itself once the rules are met." />
+              <label><Lbl text="Long chats" tip="What to do when a chat grows past the threshold: nothing, show a suggestion to compact, or compact automatically using the rules below." ex="Suggest: at 85k tokens a banner offers Compact, and past the hard limit below it compacts anyway. Auto: it compacts by itself once the rules are met." />
                 <select value={s.autoCompact} onChange={(e) => set('autoCompact', e.target.value)}>
                   <option value="off">Do nothing</option>
                   <option value="suggest">Suggest compacting</option>
@@ -137,10 +137,10 @@ export function SettingsModal({ cwd, folders, onClose, initialTab }: { cwd: stri
                 <option value="off">Off — the agent searches only when it decides to</option>
               </select>
             </label>
-            <div className="sub-h">Auto-compact rules (when Long chats = Auto)</div>
+            <div className="sub-h">Auto-compact rules (Auto; the hard limit also applies to Suggest)</div>
             <div className="row3">
               <label><Lbl text="Wait until idle (minutes)" tip="Auto-compact only after the chat has had no model call for this long, so the provider's prompt cache has already expired and isn't wasted. 0 = compact immediately." ex="At 5, a chat you are actively using isn't compacted until you pause for 5 minutes." /><input type="number" min={0} max={240} value={s.compactIdleMinutes} onChange={(e) => set('compactIdleMinutes', Number(e.target.value))} /></label>
-              <label><Lbl text="Compact anyway above (tokens)" tip="Above this size, compact even if the chat is active and the cache is warm, because the chat is getting slow and expensive. 0 = always wait for idle." ex="At 120000, a 130k-token chat compacts right away instead of waiting." /><input type="number" min={0} step={10000} value={s.compactHardLimit} onChange={(e) => set('compactHardLimit', Number(e.target.value))} /></label>
+              <label><Lbl text="Compact anyway above (tokens)" tip="Above this size, compact even if the chat is active and the cache is warm, because the chat is getting slow and expensive. Also applies when Long chats = Suggest, so a chat can't outgrow the model's context window. 0 = always wait for idle (and never compact in Suggest mode)." ex="At 120000, a 130k-token chat compacts right away instead of waiting." /><input type="number" min={0} step={10000} value={s.compactHardLimit} onChange={(e) => set('compactHardLimit', Number(e.target.value))} /></label>
               <label><Lbl text="Minimum saving (tokens)" tip="Skip compaction if the turns that would be summarized are smaller than this. Small compactions cost more in cache rebuilding than they save." ex="At 20000, if only 8k tokens of older turns could be summarized, nothing happens." /><input type="number" min={0} step={5000} value={s.compactMinGain} onChange={(e) => set('compactMinGain', Number(e.target.value))} /></label>
             </div>
             <div className="muted small">Rule: compact when the chat is over the threshold <b>and</b> at least the minimum saving would be summarized <b>and</b> (it has been idle for the wait time <b>or</b> it is over the hard limit).</div>

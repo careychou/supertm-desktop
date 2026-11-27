@@ -5,7 +5,7 @@ import { loadRegistry, type Registry } from './registry/registry'
 import { AgentManager } from './manager'
 import { runLoop, AbortedError } from './loop'
 import { selectTools } from './tools'
-import type { ToolDef } from './tools/types'
+import type { ToolContext, ToolDef } from './tools/types'
 import { ShellManager } from './tools/shell'
 import { closeSessionDb } from './tools/sql'
 import { buildMainSystem } from './prompt'
@@ -31,6 +31,8 @@ export interface SessionOptions {
   folderMemory?: Memory
   /** Per-chat folder for scratch state (sql tool database). */
   stateDir?: string
+  /** Loads an image file for the model (read_file on a PNG shows the picture); without it such reads are refused. */
+  loadImage?: ToolContext['loadImage']
   /** Prior conversation (without system message) to resume. */
   history?: Message[]
   /** Waits between tries of a failed model call; default RETRY_DELAYS_MS (2 s, 5 s, 10 s: four tries). */
@@ -66,7 +68,7 @@ export class Session {
     this.manager = new AgentManager({
       adapter: o.adapter, hooks: o.hooks, registry: this.registry, cwd: o.cwd, model: o.model,
       maxConcurrency: o.maxConcurrency ?? 4, maxTurnsSub: o.maxTurnsSub ?? 30, maxOutputTokens: o.maxOutputTokens, autoApprove: o.autoApprove, reasoning: o.reasoning ?? 'medium',
-      shells: this.shells, stateDir: o.stateDir, dynamicTools: o.dynamicTools, retryDelaysMs: o.retryDelaysMs
+      shells: this.shells, stateDir: o.stateDir, loadImage: o.loadImage, dynamicTools: o.dynamicTools, retryDelaysMs: o.retryDelaysMs
     })
     this.messages = [{ role: 'system', content: this.system() }, ...(o.history ?? [])]
     this.manager.onBackgroundDone = (parentId) => {
@@ -124,7 +126,7 @@ export class Session {
         text = await runLoop({
           agentId: MAIN_ID, model: this.o.model, adapter: this.o.adapter, sem: this.manager.sem, hooks: this.o.hooks,
           tools: [...selectTools(undefined, 0), ...(this.o.extraTools ?? []), ...(this.o.dynamicTools?.() ?? [])], signal: controller.signal, maxTurns: () => this.o.maxTurnsMain ?? 50, maxTokens: () => this.o.maxOutputTokens ?? 0, reasoning: this.o.reasoning ?? 'medium',
-          ctx: { cwd: this.o.cwd, depth: 0, hooks: this.o.hooks, gate: this.manager.gate, registry: this.registry, agents: this.manager, shells: this.shells, stateDir: this.o.stateDir },
+          ctx: { cwd: this.o.cwd, depth: 0, hooks: this.o.hooks, gate: this.manager.gate, registry: this.registry, agents: this.manager, shells: this.shells, stateDir: this.o.stateDir, loadImage: this.o.loadImage },
           drainNotifications: () => this.manager.drain(MAIN_ID),
           drainInput: () => this.drainQueue(), retryDelaysMs: this.o.retryDelaysMs
         }, this.messages)

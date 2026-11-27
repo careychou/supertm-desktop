@@ -80,6 +80,19 @@ describe('fs tools', () => {
     const r = await grep.run({ pattern: 'foo', glob: '*.ts' }, ctx)
     expect(r).toBe('src/y.ts:1:const foo = 2')
   })
+  it('shows an image as a picture instead of decoding it as text', async () => {
+    fs.writeFileSync(`${ctx.cwd}/shot.png`, Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(2000, 0xff)]))
+    const shown: any[] = []
+    const r = await readFile.run({ path: 'shot.png' }, { ...ctx, loadImage: async () => ({ dataUrl: 'data:image/png;base64,AA', width: 10, height: 5 }), attachImage: (im) => shown.push(im) })
+    expect(r).toMatch(/PNG image .*attached as a picture/)
+    expect(r).not.toContain('\ufffd')
+    expect(shown).toEqual([expect.objectContaining({ dataUrl: 'data:image/png;base64,AA', caption: expect.stringContaining('shot.png') })])
+    await expect(readFile.run({ path: 'shot.png' }, ctx)).rejects.toThrow(/PNG image .*text only/)
+  })
+  it('refuses other binary files', async () => {
+    fs.writeFileSync(`${ctx.cwd}/blob.bin`, Buffer.from([1, 2, 0, 3, 0, 4]))
+    await expect(readFile.run({ path: 'blob.bin' }, ctx)).rejects.toThrow(/binary file .*reads text only/)
+  })
 })
 
 describe('async shells', () => {

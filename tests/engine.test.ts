@@ -302,3 +302,36 @@ describe('permission mode', () => {
     expect(asked).toBe(1)
   })
 })
+
+describe('tool images and context overflow', () => {
+  it('sends an image read_file opened as a picture after the tool results, not as a user turn', async () => {
+    const { s, adapter, cwd } = mk(async () => {
+      if (adapter.calls.length === 1) return [call('c1', 'read_file', { path: 'p.png' }), { type: 'finish', reason: 'tool_calls' }]
+      return say('done')
+    }, { loadImage: async () => ({ dataUrl: 'data:image/png;base64,AA', width: 4, height: 4 }) })
+    fs.writeFileSync(path.join(cwd, 'p.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]))
+    await s.send('look')
+    const msgs = adapter.calls[1].messages
+    const last = msgs[msgs.length - 1] as any
+    expect(msgs[msgs.length - 2].role).toBe('tool')
+    expect(last.role).toBe('user')
+    expect(last.content.some((p: any) => p.type === 'image_url' && p.image_url.url === 'data:image/png;base64,AA')).toBe(true)
+    const { isRealUser } = await import('../src/shared/fork')
+    expect(s.history.filter(isRealUser)).toHaveLength(1)
+  })
+
+  it('cuts oversized tool results and retries once when the prompt is too long', async () => {
+    const junk = '\ufffd'.repeat(30_000)
+    const { s, adapter, events } = mk(async (r) => {
+      if (adapter.calls.length === 1) return [call('c1', 'big', {}), { type: 'finish', reason: 'tool_calls' }]
+      if (adapter.calls.length === 2) throw Object.assign(new Error('HTTP 400: prompt is too long: 1030369 tokens > 1000000 maximum'), { status: 400 })
+      return say(`ok ${toolResults(r)[0].length}`)
+    }, { extraTools: [{ name: 'big', description: 'd', parameters: { type: 'object', properties: {} }, run: async () => junk }] })
+    const r = await s.send('go')
+    expect(r.status).toBe('completed')
+    expect(adapter.calls).toHaveLength(3)
+    expect(toolResults(adapter.calls[2])[0]).toMatch(/mostly binary data was removed/)
+    expect(events.some((e) => e.kind === 'error' && /too long for the model/.test((e as any).message))).toBe(true)
+  })
+})
+

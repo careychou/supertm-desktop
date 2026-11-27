@@ -303,7 +303,7 @@ Compaction folds older turns into a summary so long chats stay fast and cheap.
 
 - **By hand**: click **⇲ Compact** in the chat bar. Either keep the last *N* turns word-for-word, or **Choose turns** and set each turn (or a whole topic cluster) to *Keep · Summarize · Drop*.
 - **Nothing is lost for good**: compacted turns stay in a searchable index. Ask about something from earlier ("what retry limit did we pick?") and the agent finds the turn with its `recall` tool, in this chat or other chats of the same folder. Name another chat in your prompt or in the session memory ("in the session Budget review, what did we decide about X?") and the agent searches that chat. With **Recall hints** on (Settings → Memory compaction), a short pointer to the matching turns is attached to your prompt automatically.
-- **Automatically**: in **Settings → Memory compaction**, set *Long chats* to **Auto**. The rules wait until the provider's prompt cache has gone cold (it is idle for the wait time), unless the chat is over the hard limit. They also skip compactions that would save too little.
+- **Automatically**: in **Settings → Memory compaction**, set *Long chats* to **Auto**. The rules wait until the provider's prompt cache has gone cold (it is idle for the wait time), unless the chat is over the hard limit. They also skip compactions that would save too little. With **Suggest**, a chat over the hard limit is compacted anyway, so it cannot outgrow the model.
 - **Compaction model**: choose a fast, cheaper model to write summaries. If it fails, the chat's model is used.
 
 How it works: [context-memory.md](context-memory.md) (recall, recall hints, cross-chat recall and compaction).

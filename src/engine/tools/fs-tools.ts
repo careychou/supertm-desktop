@@ -22,15 +22,36 @@ export function* walk(root: string, limit = 20000): Generator<string> {
   }
 }
 
+/** Image type from the first bytes, '' for none. */
+export function imageKind(h: Buffer): string {
+  if (h[0] === 0x89 && h[1] === 0x50 && h[2] === 0x4e && h[3] === 0x47) return 'png'
+  if (h[0] === 0xff && h[1] === 0xd8 && h[2] === 0xff) return 'jpeg'
+  if (h.toString('ascii', 0, 4) === 'GIF8') return 'gif'
+  if (h.toString('ascii', 0, 4) === 'RIFF' && h.toString('ascii', 8, 12) === 'WEBP') return 'webp'
+  return ''
+}
+
+const kb = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`)
+
 export const readFile: ToolDef = {
   name: 'read_file',
-  description: 'Read a text file. Optionally pass a 1-based inclusive line range [start, end] (end -1 = EOF). Long output is cut at a whole line with a note giving the next start line; call again from there to read the rest.',
+  description: 'Read a text file. Optionally pass a 1-based inclusive line range [start, end] (end -1 = EOF). Long output is cut at a whole line with a note giving the next start line; call again from there to read the rest. An image (PNG, JPEG, GIF, WebP) is shown to you as a picture, not as text. Other binary files are refused.',
   parameters: { type: 'object', properties: { path: { type: 'string' }, start: { type: 'integer' }, end: { type: 'integer' } }, required: ['path'] },
   async run(a, ctx) {
     const p = resolvePath(ctx.cwd, a.path)
     const st = fs.statSync(p)
     if (st.isDirectory()) return fs.readdirSync(p).sort().join('\n')
-    const txt = fs.readFileSync(p, 'utf8')
+    const buf = fs.readFileSync(p)
+    const sniff = buf.subarray(0, 8192)
+    const img = imageKind(sniff)
+    if (img) {
+      if (!ctx.loadImage || !ctx.attachImage) throw new Error(`${p} is a ${img.toUpperCase()} image (${kb(st.size)}); read_file returns text only, and images cannot be shown in this context`)
+      const im = await ctx.loadImage(p)
+      ctx.attachImage({ ...im, caption: `Image from read_file: ${p} (${im.width}×${im.height})` })
+      return `${p} is a ${img.toUpperCase()} image (${kb(st.size)}). It is attached as a picture right after these tool results (${im.width}×${im.height}), so look at it there.`
+    }
+    if (sniff.includes(0)) throw new Error(`${p} is a binary file (${kb(st.size)}); read_file reads text only. Use a shell command to inspect or convert it (e.g. file, pdftotext, unzip -l)`)
+    const txt = buf.toString('utf8')
     const lines = txt.split('\n')
     const start = Math.max(1, Number(a.start) || 1)
     const numbered = !!a.start

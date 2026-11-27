@@ -1,6 +1,8 @@
 import { servedModel } from '../shared/providers'
 import type { Message, ModelAdapter, Hooks } from './types'
-import type { ToolDef, ToolContext } from './tools/types'
+import type { ToolDef, ToolContext, ToolImage } from './tools/types'
+import { TOOL_IMAGE_TAG } from './content'
+import { estimateTokens, isContextOverflow, shrinkToolResults } from './compact'
 import { Assembler } from './adapter/assemble'
 import { toSchemas } from './tools'
 import type { Semaphore } from './semaphore'
@@ -93,7 +95,7 @@ function missingArgs(tool: ToolDef, args: any): string[] {
   return Array.isArray(req) ? req.filter((k: string) => args?.[k] === undefined || args?.[k] === null) : []
 }
 
-async function runTool(o: LoopOptions, call: { id: string; function: { name: string; arguments: string } }, truncated = false): Promise<string> {
+async function runTool(o: LoopOptions, call: { id: string; function: { name: string; arguments: string } }, truncated = false, images?: Array<ToolImage & { caption: string }>): Promise<string> {
   const { name, arguments: raw } = call.function
   o.hooks.onEvent({ kind: 'tool_start', agentId: o.agentId, callId: call.id, name, args: raw })
   let output: string
@@ -113,7 +115,7 @@ async function runTool(o: LoopOptions, call: { id: string; function: { name: str
       const allowed = await o.ctx.gate.check(o.agentId, tool.permission, detail)
       if (!allowed) throw new Error('the user denied permission for this tool call')
     }
-    output = await tool.run(args, { ...o.ctx, agentId: o.agentId, signal: o.signal })
+    output = await tool.run(args, { ...o.ctx, agentId: o.agentId, signal: o.signal, ...(images ? { attachImage: (im) => images.push(im) } : {}) })
   } catch (e: any) {
     ok = false
     output = `Error: ${e?.message ?? String(e)}`
@@ -121,6 +123,18 @@ async function runTool(o: LoopOptions, call: { id: string; function: { name: str
   if (o.signal.aborted) { ok = false; output = 'Error: cancelled' }
   o.hooks.onEvent({ kind: 'tool_end', agentId: o.agentId, callId: call.id, name, output, ok })
   return output
+}
+
+/** callModel; when the prompt overflows the context window, cuts oversized tool results (to 60% of the estimate) and tries once more. */
+async function callModelFitting(o: LoopOptions, messages: Message[]): Promise<Reply> {
+  try { return await callModel(o, messages) } catch (e) {
+    if (!isContextOverflow(e) || o.signal.aborted) throw e
+    const before = estimateTokens(messages)
+    const n = shrinkToolResults(messages, Math.round(before * 0.6))
+    if (!n) throw e
+    o.hooks.onEvent({ kind: 'error', agentId: o.agentId, message: `The conversation was too long for the model. Cut ${n} oversized tool result${n > 1 ? 's' : ''} (~${Math.round(before / 1000)}k → ~${Math.round(estimateTokens(messages) / 1000)}k tokens) and tried again.` })
+    return callModel(o, messages)
+  }
 }
 
 /** Runs model/tool turns until the model answers without tool calls. Mutates `messages`. Returns final text. */
@@ -131,15 +145,18 @@ export async function runLoop(o: LoopOptions, messages: Message[]): Promise<stri
     const notes = o.drainNotifications?.() ?? []
     if (notes.length) messages.push({ role: 'user', content: notes.map((n) => `<system_notification>${n}</system_notification>`).join('\n') })
     messages.push(...(o.drainInput?.() ?? []))
-    const msg = await callModel(o, messages)
+    const msg = await callModelFitting(o, messages)
     const truncated = !!msg.truncated
     delete msg.truncated
     messages.push(msg)
     o.hooks.onEvent({ kind: 'assistant_done', agentId: o.agentId, message: msg })
     if (!msg.tool_calls?.length) return msg.content ?? ''
     if (truncated) o.hooks.onEvent({ kind: 'error', agentId: o.agentId, message: 'The model hit its output token limit mid-reply; cut-off tool calls were not run and the model was asked to retry in smaller parts.' })
-    const results = await Promise.all(msg.tool_calls.map((c) => runTool(o, c, truncated)))
+    const images: Array<ToolImage & { caption: string }> = []
+    const results = await Promise.all(msg.tool_calls.map((c) => runTool(o, c, truncated, images)))
     msg.tool_calls.forEach((c, i) => messages.push({ role: 'tool', tool_call_id: c.id, content: results[i] }))
+    // Tool results are text only on most APIs, so pictures a tool opened (read_file on a PNG) follow as one user-role message.
+    if (images.length) messages.push({ role: 'user', content: [{ type: 'text', text: `${TOOL_IMAGE_TAG}Images opened by tools in the previous step:` }, ...images.flatMap((im) => [{ type: 'text' as const, text: im.caption }, { type: 'image_url' as const, image_url: { url: im.dataUrl } }])] })
     if (o.signal.aborted) throw new AbortedError()
   }
   throw new Error(`stopped after reaching the max of ${max()} turns`)

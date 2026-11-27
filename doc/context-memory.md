@@ -462,7 +462,9 @@ flowchart TD
   P[user sends prompt] --> A{autoCompact}
   A -- off --> S[send]
   A -- suggest default --> B{tokens > threshold?}
-  B -- yes --> BN[banner: chat is long, Choose turns...]
+  B -- yes --> H{tokens >= hardLimit?}
+  H -- yes --> K
+  H -- no --> BN[banner: chat is long, Choose turns...]
   B -- no --> S
   BN --> S
   A -- auto --> D[autoCompactDecision]
@@ -480,7 +482,7 @@ All of these live in **Settings → Memory compaction**:
 | `compactKeepRecent` | 2 | Turns kept verbatim by auto-compaction |
 | `compactModel` | `''` = the chat's model | Model for summaries and topic clustering |
 | `compactIdleMinutes` | 5 | Auto: wait until the chat's last model call is at least this old (0 = no wait) |
-| `compactHardLimit` | 120,000 tokens | Auto: compact even when the cache is warm at or above this size (0 = never override the wait) |
+| `compactHardLimit` | 120,000 tokens | Auto: compact even when the cache is warm at or above this size (0 = never override the wait). Suggest: also compacts at or above this size (0 = never) |
 | `compactMinGain` | 20,000 tokens | Auto: skip unless at least this much would be folded into the summary |
 
 Auto-compaction runs *before* the new prompt is sent and uses the simple keep-last-N plan (no clustering call) so it adds only one model call. If it fails (e.g. the endpoint is down) an `Auto-compact failed: …` error is shown, the history is left untouched (it is only replaced after a summary exists) and the prompt is still sent. Manual compaction goes through the dialog: choose mode, review the buckets, see the before/after estimate, confirm. Manual compaction is never blocked by the auto rules: you decide.
@@ -512,7 +514,7 @@ That is why the defaults pair an idle wait with a separate, cheaper compaction m
 
 ```
 gain = estimated tokens of the turns that would be summarized (all but the last keepRecent)
-compact  iff  mode = auto
+compact  iff  ( mode = auto  or  (mode = suggest and hardLimit > 0 and tokens ≥ hardLimit) )
          and  tokens > threshold
          and  gain ≥ minGain                         (skip small, frequent compactions)
          and  ( tokens ≥ hardLimit                    (too big: context limit and per-turn cost win)
@@ -522,7 +524,11 @@ compact  iff  mode = auto
 
 `lastModelCall` is tracked in memory per chat from the main and sub-agent usage events (not from compaction's own calls), and falls back to the chat's `updated_at` after an app restart. A skipped decision is silent; the banner still offers manual compaction. The decision returns a reason (`cache-warm`, `small-gain`, `hard-limit`, `idle`, …) that the tests assert.
 
-### 15.2 Compaction model
+### 15.2 When the prompt no longer fits
+
+The estimate can lag reality: a tool result full of binary bytes (before `read_file` refused binaries, a PNG read as UTF-8) costs far more tokens per character than the chars/4 rule assumes. When the provider rejects a call with "prompt is too long" (or a similar context-length error), `runLoop` calls `shrinkToolResults` on the live history: tool results over 4,000 chars are cut, older turns first and largest first, until the estimate is under 60% of what it was. A mostly-binary result (over 5% U+FFFD or control characters) becomes a one-line note; any other keeps its first 2,000 chars and a note to re-run the tool. The call is then tried once more, and an error event in the chat says how many results were cut. The shrunk history is what gets saved, so the chat stays usable afterwards.
+
+### 15.3 Compaction model
 
 Summarizing is an extraction task; a fast, cheap model does it well, so `compactModel` lets you send summaries and clustering to a different model than the chat (e.g. Gemini Flash while chatting with Claude Opus). The chat's own cache is unaffected: the summarize call is a separate request with its own prefix. If the compaction model fails (not offered by the current provider, quota, network) `Session` retries once with the chat's model, so compaction never fails just because of this setting. Compaction calls are recorded in the usage ledger under the agent id `compact`, so their cost shows in **AI usage**; the compaction card shows which model wrote the summary.
 

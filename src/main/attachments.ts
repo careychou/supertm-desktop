@@ -48,6 +48,15 @@ export async function prepareAttachment(input: AttachInput, l: AttachLimits, kee
   }
 }
 
+/** A file a tool opened (read_file on a PNG), encoded within the attachment limits so the model sees the picture. */
+export async function loadToolImage(file: string, l: AttachLimits): Promise<{ dataUrl: string; width: number; height: number }> {
+  const st = fs.statSync(file)
+  if (st.size > MAX_INPUT) throw new Error(`image is ${fmtBytes(st.size)}; the limit is ${fmtBytes(MAX_INPUT)}`)
+  const ext = sniff(file) || path.extname(file).slice(1).toLowerCase()
+  const { att } = image(file, path.basename(file), ext === 'jpg' ? 'jpeg' : ext, st.size, l)
+  return { dataUrl: att.dataUrl, width: att.width, height: att.height }
+}
+
 async function build(id: string, file: string, name: string, l: AttachLimits): Promise<Prepared> {
   {
     const st = fs.statSync(file)

@@ -25,7 +25,13 @@ export interface ToolContext {
   shells?: ShellManager
   /** Per-chat folder for scratch state such as the sql tool's database. */
   stateDir?: string
+  /** Loads an image file as a model-ready data URL (resized and compressed like an attachment). */
+  loadImage?: (path: string) => Promise<ToolImage>
+  /** Shows an image to the model: it is sent right after this turn's tool results. */
+  attachImage?: (img: ToolImage & { caption: string }) => void
 }
+
+export interface ToolImage { dataUrl: string; width: number; height: number }
 
 export interface ToolDef {
   name: string

@@ -1,5 +1,5 @@
 import type { Hooks, Message, ModelAdapter } from './types'
-import type { AgentInfo, AgentOps, ToolDef } from './tools/types'
+import type { AgentInfo, AgentOps, ToolContext, ToolDef } from './tools/types'
 import type { Registry } from './registry/registry'
 import type { ShellManager } from './tools/shell'
 import { PermissionGate } from './permissions'
@@ -30,6 +30,7 @@ export interface ManagerOptions {
   reasoning?: 'off' | 'low' | 'medium' | 'high'
   shells?: ShellManager
   stateDir?: string
+  loadImage?: ToolContext['loadImage']
   /** Extra tools (MCP servers) filtered by the sub-agent's `tools` list. */
   dynamicTools?: (agentTools?: string[]) => ToolDef[]
   /** Waits between tries of a failed model call (see loop.ts); default 2 s, 5 s, 10 s. */
@@ -110,7 +111,7 @@ export class AgentManager implements AgentOps {
         info.finalText = await runLoop({
           agentId: id, model: this.o.model, adapter: this.o.adapter, sem: this.sem, hooks: this.o.hooks,
           tools, signal: controller.signal, maxTurns: () => this.o.maxTurnsSub, maxTokens: () => this.o.maxOutputTokens ?? 0, reasoning: this.o.reasoning,
-          ctx: { cwd: this.o.cwd, depth: opts.depth, hooks: this.o.hooks, gate: this.gate, registry: this.o.registry, agents: this, shells: this.o.shells, stateDir: this.o.stateDir },
+          ctx: { cwd: this.o.cwd, depth: opts.depth, hooks: this.o.hooks, gate: this.gate, registry: this.o.registry, agents: this, shells: this.o.shells, stateDir: this.o.stateDir, loadImage: this.o.loadImage },
           drainNotifications: () => this.drain(id), retryDelaysMs: this.o.retryDelaysMs
         }, messages)
         info.status = 'completed'

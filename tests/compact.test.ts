@@ -148,6 +148,11 @@ describe('autoCompactDecision (cache-aware)', () => {
     expect(autoCompactDecision({ ...base, idleMs: 1e9, turns: big(2, 400_000) })).toMatchObject({ compact: false, reason: 'too-few-turns' })
     expect(autoCompactDecision({ ...base, idleMs: 1e9, tokens: 50_000 })).toMatchObject({ compact: false, reason: 'under-threshold' })
     expect(autoCompactDecision({ ...base, idleMs: 1e9, mode: 'suggest' })).toMatchObject({ compact: false, reason: 'off' })
+    expect(autoCompactDecision({ ...base, tokens: 130_000, mode: 'off' })).toMatchObject({ compact: false, reason: 'off' })
+  })
+  it('suggest mode still compacts past the hard limit', () => {
+    expect(autoCompactDecision({ ...base, tokens: 130_000, mode: 'suggest' })).toMatchObject({ compact: true, reason: 'hard-limit' })
+    expect(autoCompactDecision({ ...base, tokens: 130_000, mode: 'suggest', hardLimit: 0 })).toMatchObject({ compact: false, reason: 'off' })
   })
   it('idle wait 0 compacts immediately', () => {
     expect(autoCompactDecision({ ...base, idleMinutes: 0 })).toMatchObject({ compact: true, reason: 'no-wait' })

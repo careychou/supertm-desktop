@@ -18,7 +18,7 @@ import type { AppInfo, CompactItem, PushEvent } from '../shared/api'
 import { BRAND } from '../shared/brand'
 import { parseMemory, serializeMemory, type Memory } from '../shared/memory'
 import { insertBeforeTurn, liveTurnMap, orderRows, reorderIds, sliceItemsAtTurn, sliceMessagesAtTurn } from '../shared/fork'
-import { prepareAttachment, type AttachInput } from './attachments'
+import { loadToolImage, prepareAttachment, type AttachInput } from './attachments'
 import type { Attachment } from '../engine/content'
 import { exportSessions, importSessions, resolveSyncFile, scanSessions } from './sync'
 import type { ExternalSource } from '../shared/sync'
@@ -82,7 +82,7 @@ function getLive(id: string): Session {
   s = new Session({
     adapter: adapter(), cwd: row.cwd, model: row.model, history: store.loadMessages(id),
     maxConcurrency: settings.maxConcurrency, maxTurnsMain: settings.maxTurnsMain, maxTurnsSub: settings.maxTurnsSub, maxOutputTokens: settings.maxOutputTokens, reasoning: effortOf(row), memory: parseMemory(row.memories), folderMemory: folderMemoryOf(row.cwd),
-    autoApprove: modeOf(row) === 'autopilot', stateDir: stateDirOf(id), compactModel: () => settings.compactModel,
+    autoApprove: modeOf(row) === 'autopilot', stateDir: stateDirOf(id), loadImage: (p) => loadToolImage(p, settings), compactModel: () => settings.compactModel,
     extraTools: [recallTool((q, scope, limit, chat) => recallSearch(id, q, scope, limit, 0, chat)), ...(plugins?.tools ?? []), ...(excel?.tools() ?? []), ...(office?.tools() ?? [])], dynamicTools: (agentTools) => mcp?.hub.tools(row.cwd, agentTools) ?? [], recall: true,
     extraPrompt: [RECALL_PROMPT, excel?.prompt(), office?.prompt()].filter(Boolean).join('\n\n') || undefined,
     hooks: {
@@ -188,7 +188,7 @@ async function run(id: string, s: Session, prompt?: string, atts: Attachment[] =
   if (s.isBusy) { if (prompt || atts.length) void s.send(prompt, atts, qid); return }
   push({ type: 'busy', sessionId: id, busy: true })
   try {
-    if ((prompt || atts.length) && settings.autoCompact === 'auto') {
+    if ((prompt || atts.length) && settings.autoCompact !== 'off') {
       const turns = splitHistoryTurns(s.history)
       const last = lastCall.get(id) ?? store.getSession(id)?.updated_at ?? 0
       const d = autoCompactDecision({ mode: settings.autoCompact, tokens: s.tokenEstimate, threshold: settings.compactThreshold, hardLimit: settings.compactHardLimit,

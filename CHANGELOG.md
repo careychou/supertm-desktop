@@ -1,5 +1,13 @@
 # Release notes
 
+## 1.4.10
+
+### Images read by the agent are seen as pictures, and an overlong chat recovers
+- **`read_file` on an image shows it to the model as a picture.** Reading a PNG, JPEG, GIF or WebP no longer pastes its bytes into the chat as garbled text. The image is resized like an attachment and sent right after the tool results, so the model can look at screenshots it just made. It costs about the same as an attached image, and it is dropped from older turns like other images
+- **Other binary files are refused** with the file size and a hint (for example `file`, `pdftotext`, `unzip -l`) instead of tens of thousands of characters of noise
+- **"Prompt is too long" now recovers.** When the provider says the chat no longer fits the model, the largest old tool results are cut (mostly-binary ones are removed), and the request is tried again once. A note in the chat says what was cut
+- **Suggest mode respects the hard limit.** With *Long chats = Suggest compacting*, a chat over **Compact anyway above** is now compacted before the next prompt, so it cannot grow past the model's context window. Set the limit to 0 to keep Suggest purely manual
+
 ## 1.4.9
 
 ### Import from GitHub Copilot: right names, dates and turn counts, and no duplicate imports
