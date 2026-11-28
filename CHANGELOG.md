@@ -1,5 +1,12 @@
 # Release notes
 
+## 1.4.11
+
+### Max concurrent model calls also caps how many sub-agents run at once
+- **The limit now does what its ⓘ says.** At 20, a task that fans out to 30 sub-agents runs 20 and queues 10, which start as others finish. Before, a sub-agent gave back its place while its tools ran, so all 30 could run their scripts at the same time. Ten helpers each running a heavy Python script could use up the memory of a small machine or container
+- Each sub-agent keeps its place until it finishes, tools and scripts included. Sub-agents started by other sub-agents don't take a place, so they never wait on their own parent. Stop still cancels the ones waiting
+- Model calls across all agents still share the same limit, and changing it in Settings applies right away
+
 ## 1.4.10
 
 ### Images read by the agent are seen as pictures, and an overlong chat recovers

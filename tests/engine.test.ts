@@ -233,6 +233,19 @@ describe('sub-agents', () => {
     expect(peak).toBeLessThanOrEqual(2)
   })
 
+  it('caps running sub-agents at max concurrency for their whole run, tools included', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'slots-'))
+    // Each sub-agent runs a 0.4 s script; the model calls are instant, so only the sub-agent cap keeps them apart.
+    const { s } = mk(async (r) => {
+      if (isSub(r)) return toolResults(r).length ? say('x') : [call('c0', 'shell', { command: `touch ${dir}/$$; ls ${dir} | wc -l >> ${dir}.peaks; sleep 0.4; rm ${dir}/$$` }), { type: 'finish', reason: 'tool_calls' }]
+      return toolResults(r).length ? say(`all ${toolResults(r).length}`) : [0, 1, 2, 3, 4, 5].map((i) => call(`c${i}`, 'task', { prompt: `p${i}` })).concat([{ type: 'finish', reason: 'tool_calls' }])
+    }, { maxConcurrency: 2 })
+    expect((await s.send('go')).text).toBe('all 6')
+    const peaks = fs.readFileSync(`${dir}.peaks`, 'utf8').trim().split(/\s+/).map(Number)
+    expect(peaks.length).toBe(6)
+    expect(Math.max(...peaks)).toBeLessThanOrEqual(2)
+  })
+
   it('background task returns id, read_agent waits for the result', async () => {
     let bgId = ''
     const { s } = mk(async (r) => {

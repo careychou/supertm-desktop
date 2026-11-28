@@ -93,7 +93,7 @@ export class Session {
     if (l.maxOutputTokens !== undefined) { this.o.maxOutputTokens = l.maxOutputTokens; this.manager.o.maxOutputTokens = l.maxOutputTokens }
     if (l.maxTurnsMain) this.o.maxTurnsMain = l.maxTurnsMain
     if (l.maxTurnsSub) { this.o.maxTurnsSub = l.maxTurnsSub; this.manager.o.maxTurnsSub = l.maxTurnsSub }
-    if (l.maxConcurrency) { this.o.maxConcurrency = l.maxConcurrency; this.manager.o.maxConcurrency = l.maxConcurrency; this.manager.sem.setMax(l.maxConcurrency) }
+    if (l.maxConcurrency) { this.o.maxConcurrency = l.maxConcurrency; this.manager.o.maxConcurrency = l.maxConcurrency; this.manager.sem.setMax(l.maxConcurrency); this.manager.slots.setMax(l.maxConcurrency) }
   }
   /** interactive asks before shell/write/url tools; autopilot approves them automatically. */
   setMode(mode: 'interactive' | 'autopilot') { this.manager.gate.setAutoApprove(mode === 'autopilot') }

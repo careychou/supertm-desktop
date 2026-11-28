@@ -162,7 +162,7 @@ sequenceDiagram
 |---|---|
 | `sync` (default) | The `task` call blocks until the child finishes; the result is the child's final text. |
 | `background` | `task` returns an `agent_id` immediately. The parent keeps working. On completion the child's result is stored and a **notification** is queued for the parent (see §5). The parent fetches the answer with `read_agent(agent_id, wait?, timeout?)` (default wait 60 s, max 600 s). |
-| parallel | Not a mode: several `task` calls in one assistant message are executed by the loop's `Promise.all`, so the children run concurrently (bounded by the semaphore). |
+| parallel | Not a mode: several `task` calls in one assistant message are executed by the loop's `Promise.all`, so the children run concurrently: up to Max concurrent model calls at once, each holding its place for its whole run (tools included); the rest queue and start as others end. |
 
 `list_agents` returns the agents of the current session with status (`running`, `completed`, `failed`, `cancelled`).
 

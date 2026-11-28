@@ -43,11 +43,18 @@ const newId = (name: string) => `${name.replace(/[^a-z0-9-]/gi, '-').toLowerCase
 /** Owns the agent tree: spawning sub-agents, background tracking, notifications and cascading cancellation. */
 export class AgentManager implements AgentOps {
   readonly sem: Semaphore
+  /**
+   * Places for running sub-agents. Max concurrent model calls also caps how many of the main agent's sub-agents run
+   * at once: each keeps a place for its whole run, tools and scripts included (the model-call limiter is let go while
+   * tools run, so on its own a 30-way fan-out could run all 30 helpers' scripts at once). Nested sub-agents don't take a place.
+   */
+  readonly slots: Semaphore
   readonly gate: PermissionGate
   private entries = new Map<string, Entry>()
 
   constructor(public o: ManagerOptions) {
     this.sem = new Semaphore(o.maxConcurrency)
+    this.slots = new Semaphore(o.maxConcurrency)
     this.gate = new PermissionGate(o.hooks, o.autoApprove)
   }
 
@@ -107,7 +114,9 @@ export class AgentManager implements AgentOps {
     this.o.hooks.onEvent({ kind: 'agent_start', agentId: id, parentId: opts.parentId, name, mode: opts.mode, prompt: opts.prompt })
 
     entry.done = (async () => {
+      let free: (() => void) | undefined
       try {
+        if (opts.depth === 1) free = await this.slots.acquire(controller.signal)
         info.finalText = await runLoop({
           agentId: id, model: this.o.model, adapter: this.o.adapter, sem: this.sem, hooks: this.o.hooks,
           tools, signal: controller.signal, maxTurns: () => this.o.maxTurnsSub, maxTokens: () => this.o.maxOutputTokens ?? 0, reasoning: this.o.reasoning,
@@ -119,6 +128,7 @@ export class AgentManager implements AgentOps {
         info.status = e instanceof AbortedError || controller.signal.aborted ? 'cancelled' : 'failed'
         info.finalText = info.status === 'cancelled' ? 'cancelled' : (e?.message ?? String(e))
       } finally {
+        free?.()
         parent.controller.signal.removeEventListener('abort', onParentAbort)
         this.o.hooks.onEvent({ kind: 'agent_end', agentId: id, status: info.status, finalText: info.finalText })
         if (opts.mode === 'background') {

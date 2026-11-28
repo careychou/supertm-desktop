@@ -17,6 +17,7 @@ There is **one conversation per chat and one main agent working on it**. A promp
 | `qid` | renderer → engine | A random ID the renderer gives each prompt, so both sides can refer to the same queued prompt |
 | `entries[agent].notifications` | `AgentManager` | Messages for an agent from its finished **background** sub-agents |
 | `Semaphore(maxConcurrency)` | `AgentManager` | Limits concurrent **model calls** across the main agent and all sub-agents (default 4) |
+| `slots` (same limit) | `AgentManager` | Limits how many of the main agent's sub-agents **run at once**, held for each one's whole run including tools; nested sub-agents don't take a place, so they never deadlock |
 | Queue chips | renderer | What you see above the message box: **Next**, **+1**, **+2**… with **×** to take a prompt back |
 
 ## 3. Lifecycle of a prompt

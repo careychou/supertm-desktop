@@ -42,7 +42,7 @@ Key design decisions:
 
 - **The engine is headless.** `src/engine` has no Electron imports. The desktop app and the CLI both drive it through the same `Session` class and a `Hooks` object (events out, permission/ask questions in). This is why it can be tested without a UI.
 - **One conversation per chat, one `Session` object per open chat.** The main agent's message history is a plain OpenAI-style `messages[]` array. Everything else (UI items, sub-agent transcripts) is derived from engine events.
-- **Sub-agents are just nested loops** with fresh context; they share the model concurrency limit, the permission gate and the shell manager.
+- **Sub-agents are just nested loops** with fresh context; they share the model concurrency limit (which also caps how many run at once), the permission gate and the shell manager.
 - **The UI is an event fold.** The renderer never asks the engine "what happened"; it folds a stream of `AgentEvent`s into an item tree (`src/renderer/src/state.ts`).
 - **Pure functions for the hard parts.** Compaction planning, fork slicing, ordering, attachment sizing and pricing are pure and unit-tested (`tests/`).
 
